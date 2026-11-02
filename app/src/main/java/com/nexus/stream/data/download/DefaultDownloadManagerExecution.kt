@@ -80,8 +80,9 @@ private suspend fun DefaultDownloadManager.executeHttpDownload(
         handleHttpResult(item, result, httpSource.url)
     } catch (e: CancellationException) {
         throw e
-    } catch (_: Exception) {
+    } catch (expected: Throwable) {
         repository.updateState(item.id, DownloadState.FAILED, clock.now(), failure = DownloadFailure.UNKNOWN)
+        emitEffect(DownloadEffect.Failed(item.id, DownloadFailure.UNKNOWN))
     } finally {
         session?.close()
     }
@@ -114,9 +115,9 @@ private suspend fun DefaultDownloadManager.executeTorrentDownload(
         handleTorrentResult(item, result, saveDir)
     } catch (e: CancellationException) {
         throw e
-    } catch (_: Exception) {
-        repository.updateState(item.id, DownloadState.FAILED, clock.now(), failure = DownloadFailure.UNKNOWN)
-        emitEffect(DownloadEffect.Failed(item.id, DownloadFailure.UNKNOWN))
+    } catch (expected: Throwable) {
+        repository.updateState(item.id, DownloadState.FAILED, clock.now(), failure = DownloadFailure.TORRENT_ENGINE)
+        emitEffect(DownloadEffect.Failed(item.id, DownloadFailure.TORRENT_ENGINE))
     }
 }
 

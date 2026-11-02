@@ -31,6 +31,7 @@ import com.nexus.stream.domain.repository.TorrentFileChoice
 import com.nexus.stream.domain.repository.TorrentResult
 import com.nexus.stream.domain.repository.TorrentTask
 import com.nexus.stream.domain.repository.TorrentUpdate
+import com.nexus.stream.domain.usecase.SERVICE_MIN_GAP_MS
 import com.nexus.stream.domain.usecase.SpeedMeter
 import com.nexus.stream.domain.usecase.TORRENT_SUBDIR
 import com.nexus.stream.domain.usecase.downloadFileExtension
@@ -45,6 +46,7 @@ import com.nexus.stream.domain.usecase.pickToStart
 import com.nexus.stream.domain.usecase.torrentSaveDir
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -77,13 +79,15 @@ class DefaultDownloadManager(
     internal val clock: DownloadClock,
     internal val platform: DownloadPlatformComponents,
     internal val galleryExporter: GalleryExporter,
-    internal val scope: CoroutineScope,
+    scope: CoroutineScope,
 ) : DownloadManager {
     internal val torrentDownloader: TorrentDownloader get() = platform.torrentDownloader
 
+    internal val scope: CoroutineScope = CoroutineScope(scope.coroutineContext + CoroutineExceptionHandler { _, _ -> })
+
     internal val ioDispatcher: CoroutineDispatcher =
         requireNotNull(
-            scope.coroutineContext[kotlin.coroutines.ContinuationInterceptor] as? CoroutineDispatcher,
+            this.scope.coroutineContext[kotlin.coroutines.ContinuationInterceptor] as? CoroutineDispatcher,
         ) { "Scope must contain a CoroutineDispatcher" }
 
     @Inject
@@ -124,6 +128,8 @@ class DefaultDownloadManager(
     internal val lastPersistBytes = ConcurrentHashMap<String, Long>()
     internal val lastProgressTimes = ConcurrentHashMap<String, Long>()
     internal val lastProgressBytes = ConcurrentHashMap<String, Long>()
+    internal var lastServiceStartAt: Long? = null
+    internal val lastAttemptStartTimes = ConcurrentHashMap<String, Long>()
     private val schedulerMutex = Mutex()
     private val galleryMutex = Mutex()
 
@@ -162,12 +168,6 @@ class DefaultDownloadManager(
         val item = createEnqueuedItem(id, request, now)
         repository.insert(item)
 
-        try {
-            platform.serviceController.ensureRunning()
-        } catch (_: Exception) {
-            // Refused foreground service start is swallowed
-        }
-
         triggerScheduler()
         return EnqueueResult.Added(id)
     }
@@ -175,6 +175,7 @@ class DefaultDownloadManager(
     override fun pause(id: String) {
         scope.launch(ioDispatcher) {
             cancelActiveJob(id)
+            lastAttemptStartTimes.remove(id)
             val item = repository.get(id)
             if (item != null && !item.supportsResume) {
                 platform.fileStore.deletePart(id)
@@ -193,7 +194,11 @@ class DefaultDownloadManager(
                 if (activeJobs.containsKey(id)) return@launch
                 val item = repository.get(id) ?: return@launch
                 if (item.state == DownloadState.DOWNLOADING || item.state == DownloadState.QUEUED) return@launch
-                repository.updateState(id, DownloadState.QUEUED, clock.now(), pauseReason = null, failure = null)
+                val lastStart = lastAttemptStartTimes[id]
+                val now = clock.now()
+                if (lastStart != null && (now - lastStart) < SERVICE_MIN_GAP_MS) return@launch
+                lastAttemptStartTimes[id] = now
+                repository.updateState(id, DownloadState.QUEUED, now, pauseReason = null, failure = null)
                 triggerScheduler()
             } finally {
                 pendingResumes.remove(id)
@@ -203,6 +208,7 @@ class DefaultDownloadManager(
 
     override fun pauseAll() {
         scope.launch(ioDispatcher) {
+            lastAttemptStartTimes.clear()
             val all = repository.getAll()
             val now = clock.now()
             for (item in all) {
@@ -634,10 +640,24 @@ class DefaultDownloadManager(
 
     private fun startDownloadJob(item: DownloadItem) {
         if (activeJobs.containsKey(item.id)) return
+        lastAttemptStartTimes[item.id] = clock.now()
 
         val job =
             scope.launch(ioDispatcher) {
-                executeDownload(item)
+                try {
+                    executeDownload(item)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (expected: Throwable) {
+                    val failure =
+                        if (item.kind == DownloadKind.TORRENT) {
+                            DownloadFailure.TORRENT_ENGINE
+                        } else {
+                            DownloadFailure.UNKNOWN
+                        }
+                    repository.updateState(item.id, DownloadState.FAILED, clock.now(), failure = failure)
+                    emitEffect(DownloadEffect.Failed(item.id, failure))
+                }
             }
         activeJobs[item.id] = job
         job.invokeOnCompletion {
@@ -761,12 +781,15 @@ internal fun DefaultDownloadManager.updateServiceState(items: List<DownloadItem>
                 it.galleryState == GalleryState.SAVING
         }
     if (hasActive) {
-        try {
-            platform.serviceController.ensureRunning()
-        } catch (_: Exception) {
+        val now = clock.now()
+        val lastStart = lastServiceStartAt
+        if (lastStart == null || (now - lastStart) >= SERVICE_MIN_GAP_MS) {
+            lastServiceStartAt = now
+            try {
+                platform.serviceController.ensureRunning()
+            } catch (_: Exception) {
+            }
         }
-    } else {
-        platform.serviceController.stop()
     }
 }
 

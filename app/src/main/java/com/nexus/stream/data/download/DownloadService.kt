@@ -9,15 +9,20 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.nexus.stream.R
 import com.nexus.stream.domain.model.DownloadState
+import com.nexus.stream.domain.model.GalleryState
 import com.nexus.stream.domain.repository.DownloadManager
 import com.nexus.stream.domain.repository.DownloadNotifier
 import com.nexus.stream.domain.repository.NOTIFICATION_CHANNEL_PROGRESS
+import com.nexus.stream.domain.usecase.SERVICE_GRACE_MS
 import com.nexus.stream.domain.usecase.aggregateNotification
+import com.nexus.stream.domain.usecase.shouldStopService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -26,6 +31,12 @@ private const val NOTIFICATION_THROTTLE_MS = 1000L
 
 @AndroidEntryPoint
 class DownloadService : Service() {
+    companion object {
+        @Volatile
+        var isRunning: Boolean = false
+            internal set
+    }
+
     @Inject
     lateinit var downloadManager: DownloadManager
 
@@ -34,33 +45,43 @@ class DownloadService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var lastNotificationTime = 0L
+    private var idleSince: Long? = null
+    private var idleJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        startInitialForeground()
+        isRunning = true
+        if (!startInitialForeground()) {
+            stopSelf()
+            return
+        }
         observeDownloads()
     }
 
-    private fun startInitialForeground() {
-        val initialNotif =
-            NotificationCompat
-                .Builder(this, NOTIFICATION_CHANNEL_PROGRESS)
-                .setSmallIcon(R.drawable.ic_download)
-                .setContentTitle(getString(R.string.download_notif_public))
-                .setOngoing(true)
-                .build()
+    private fun startInitialForeground(): Boolean =
+        try {
+            val initialNotif =
+                NotificationCompat
+                    .Builder(this, NOTIFICATION_CHANNEL_PROGRESS)
+                    .setSmallIcon(R.drawable.ic_download)
+                    .setContentTitle(getString(R.string.download_notif_public))
+                    .setOngoing(true)
+                    .build()
 
-        val foregroundType =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            } else {
-                0
-            }
+            val foregroundType =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                } else {
+                    0
+                }
 
-        ServiceCompat.startForeground(this, NOTIFICATION_ID_AGGREGATE, initialNotif, foregroundType)
-    }
+            ServiceCompat.startForeground(this, NOTIFICATION_ID_AGGREGATE, initialNotif, foregroundType)
+            true
+        } catch (expected: Exception) {
+            false
+        }
 
     private fun observeDownloads() {
         serviceScope.launch {
@@ -72,20 +93,52 @@ class DownloadService : Service() {
                         it.state == DownloadState.DOWNLOADING ||
                             it.state == DownloadState.QUEUED ||
                             it.state == DownloadState.WAITING_FOR_WIFI ||
-                            it.state == DownloadState.WAITING_FOR_NETWORK
+                            it.state == DownloadState.WAITING_FOR_NETWORK ||
+                            it.galleryState == GalleryState.SAVING
                     }
 
-                if (!hasActive) {
-                    downloadNotifier.cancelAggregate()
-                    stopSelf()
-                    return@collect
-                }
+                if (hasActive) {
+                    idleSince = null
+                    idleJob?.cancel()
+                    idleJob = null
 
-                val model = aggregateNotification(items, live)
-                val now = System.currentTimeMillis()
-                if (model != null && now - lastNotificationTime >= NOTIFICATION_THROTTLE_MS) {
-                    lastNotificationTime = now
-                    downloadNotifier.showAggregate(model)
+                    val model = aggregateNotification(items, live)
+                    val now = System.currentTimeMillis()
+                    if (model != null && now - lastNotificationTime >= NOTIFICATION_THROTTLE_MS) {
+                        lastNotificationTime = now
+                        downloadNotifier.showAggregate(model)
+                    }
+                } else {
+                    val now = System.currentTimeMillis()
+                    if (idleSince == null) {
+                        idleSince = now
+                    }
+                    if (shouldStopService(
+                            hasActive = false,
+                            idleSinceMs = idleSince,
+                            nowMs = now,
+                            graceMs = SERVICE_GRACE_MS,
+                        )
+                    ) {
+                        downloadNotifier.cancelAggregate()
+                        stopSelf()
+                    } else if (idleJob == null) {
+                        idleJob =
+                            serviceScope.launch {
+                                delay(SERVICE_GRACE_MS)
+                                val checkNow = System.currentTimeMillis()
+                                if (shouldStopService(
+                                        hasActive = false,
+                                        idleSinceMs = idleSince,
+                                        nowMs = checkNow,
+                                        graceMs = SERVICE_GRACE_MS,
+                                    )
+                                ) {
+                                    downloadNotifier.cancelAggregate()
+                                    stopSelf()
+                                }
+                            }
+                    }
                 }
             }
         }
@@ -96,11 +149,19 @@ class DownloadService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
+        startInitialForeground()
         when (intent?.action) {
             ACTION_PAUSE_ALL -> downloadManager.pauseAll()
             ACTION_RESUME_ALL -> downloadManager.resumeAll()
         }
         return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        isRunning = false
+        idleJob?.cancel()
+        serviceScope.cancel()
+        super.onDestroy()
     }
 
     override fun onTimeout(
@@ -111,10 +172,5 @@ class DownloadService : Service() {
             downloadManager.onServiceTimeout()
             stopSelf()
         }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        serviceScope.cancel()
     }
 }

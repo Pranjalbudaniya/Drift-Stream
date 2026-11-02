@@ -847,7 +847,7 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
             advanceUntilIdle()
             exportJob.join()
 
-            assertTrue(deps.serviceController.stopCalled > initialStops)
+            assertEquals(initialStops, deps.serviceController.stopCalled)
         }
 
     @Test
@@ -990,6 +990,87 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
                     .first()
                     .file.absolutePath,
             )
+        }
+
+    @Test
+    fun FX6_resumeRapidTaps_startOneAttempt() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            val id = (manager.enqueue(testRequest()) as EnqueueResult.Added).id
+            advanceUntilIdle()
+            deps.repo.updateState(id, DownloadState.FAILED, deps.clock.now(), failure = DownloadFailure.UNKNOWN)
+            deps.clock.currentTime += 5000
+            advanceUntilIdle()
+
+            deps.downloader.recordedTasks.clear()
+            deps.downloader.handler = { _, _ -> CompletableDeferred<HttpResult>().await() }
+
+            repeat(5) {
+                manager.resume(id)
+                deps.clock.currentTime += 20
+            }
+            advanceUntilIdle()
+
+            assertEquals(1, deps.downloader.recordedTasks.size)
+        }
+
+    @Test
+    fun FX7_unexpectedThrowable_marksFailed_noCrash() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            val effects = mutableListOf<DownloadEffect>()
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+                manager.effects.collect { effects.add(it) }
+            }
+
+            deps.downloader.handler = { _, _ -> throw IllegalStateException("Unexpected crash") }
+            val httpId = (manager.enqueue(testRequest(videoId = "http1")) as EnqueueResult.Added).id
+            advanceUntilIdle()
+
+            assertEquals(DownloadState.FAILED, deps.repo.get(httpId)?.state)
+            assertEquals(DownloadFailure.UNKNOWN, deps.repo.get(httpId)?.failure)
+            assertTrue(
+                effects.any {
+                    it is DownloadEffect.Failed && it.id == httpId && it.failure == DownloadFailure.UNKNOWN
+                },
+            )
+
+            deps.torrentDownloader.onDownloadBlock = { _, _ -> throw UnsatisfiedLinkError("Native failure") }
+            val torrentId = (manager.enqueue(testTorrentRequest(videoId = "torrent1")) as EnqueueResult.Added).id
+            advanceUntilIdle()
+
+            assertEquals(DownloadState.FAILED, deps.repo.get(torrentId)?.state)
+            assertEquals(DownloadFailure.TORRENT_ENGINE, deps.repo.get(torrentId)?.failure)
+            assertTrue(
+                effects.any {
+                    it is DownloadEffect.Failed && it.id == torrentId && it.failure == DownloadFailure.TORRENT_ENGINE
+                },
+            )
+        }
+
+    @Test
+    fun FX8_manager_neverStopsTheService_andStartsItOncePerBurst() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            deps.downloader.handler = { _, _ -> CompletableDeferred<HttpResult>().await() }
+
+            val id1 = (manager.enqueue(testRequest(videoId = "b1")) as EnqueueResult.Added).id
+            deps.clock.currentTime += 100
+            manager.enqueue(testRequest(videoId = "b2"))
+            deps.clock.currentTime += 100
+            manager.enqueue(testRequest(videoId = "b3"))
+            deps.clock.currentTime += 100
+            manager.pause(id1)
+            deps.clock.currentTime += 100
+            manager.resume(id1)
+            advanceUntilIdle()
+
+            assertEquals(0, deps.serviceController.stopCalled)
+            assertEquals(1, deps.serviceController.ensureRunningCalled)
+
+            manager.pauseAll()
+            advanceUntilIdle()
+            assertEquals(0, deps.serviceController.stopCalled)
         }
 
     private fun testTorrentRequest(

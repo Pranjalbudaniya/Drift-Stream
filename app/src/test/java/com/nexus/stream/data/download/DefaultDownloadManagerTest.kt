@@ -4,6 +4,7 @@ import com.nexus.stream.data.torrent.NetworkStatus
 import com.nexus.stream.domain.model.DownloadDisplay
 import com.nexus.stream.domain.model.DownloadEffect
 import com.nexus.stream.domain.model.DownloadFailure
+import com.nexus.stream.domain.model.DownloadKind
 import com.nexus.stream.domain.model.DownloadPhase
 import com.nexus.stream.domain.model.DownloadRequest
 import com.nexus.stream.domain.model.DownloadSource
@@ -1071,6 +1072,190 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
             manager.pauseAll()
             advanceUntilIdle()
             assertEquals(0, deps.serviceController.stopCalled)
+        }
+
+    @Test
+    fun FX1_replaceSource_failedTorrent_toHttp_resetsPartialData_andQueues() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            deps.downloader.handler = { _, _ -> CompletableDeferred<HttpResult>().await() }
+            val torrentFolder = File(deps.fileStore.root, "torrents/fx1")
+            torrentFolder.mkdirs()
+            File(torrentFolder, "video.mp4").writeBytes(ByteArray(500))
+
+            val item =
+                createTestTorrentDownloadItem(
+                    id = "fx1",
+                    state = DownloadState.FAILED,
+                    downloadedBytes = 500L,
+                ).copy(totalBytes = 1000L, failure = DownloadFailure.TORRENT_ENGINE)
+            deps.repo.insert(item)
+
+            val states = mutableListOf<DownloadState>()
+            val job =
+                launch(UnconfinedTestDispatcher(testScheduler)) {
+                    deps.repo.observeAll().collect { items ->
+                        items.firstOrNull { it.id == "fx1" }?.let { states.add(it.state) }
+                    }
+                }
+
+            val newHttpSource = DownloadSource.Http("https://new.com/video.mp4")
+            manager.replaceSource("fx1", newHttpSource)
+            advanceUntilIdle()
+
+            assertFalse(torrentFolder.exists())
+            val updated = deps.repo.get("fx1")
+            assertEquals(DownloadKind.HTTP, updated?.kind)
+            assertEquals(newHttpSource, updated?.source)
+            assertEquals(0L, updated?.downloadedBytes)
+            assertEquals(0L, updated?.totalBytes)
+            assertNull(updated?.failure)
+            assertEquals(DownloadState.DOWNLOADING, updated?.state)
+            assertTrue(states.contains(DownloadState.QUEUED))
+
+            job.cancel()
+        }
+
+    @Test
+    fun FX2_replaceSource_failedHttp_toTorrent_deletesPartFile_andQueues() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            deps.prefs.setMaxConcurrent(1)
+            deps.downloader.handler = { _, _ -> CompletableDeferred<HttpResult>().await() }
+            val activeReq = testRequest(videoId = "active_v2")
+            manager.enqueue(activeReq)
+            advanceUntilIdle()
+
+            val partFile = deps.fileStore.partFile("fx2")
+            partFile.writeBytes(ByteArray(300))
+
+            val item =
+                createTestDownloadItem(
+                    id = "fx2",
+                    state = DownloadState.FAILED,
+                    downloadedBytes = 300L,
+                ).copy(failure = DownloadFailure.NETWORK)
+            deps.repo.insert(item)
+
+            val newTorrentSource =
+                DownloadSource.Torrent(
+                    infoHash = "0123456789abcdef0123456789abcdef01234567",
+                    trackers = listOf("udp://tracker.example.com:80"),
+                    fileIdx = 0,
+                )
+            manager.replaceSource("fx2", newTorrentSource)
+            advanceUntilIdle()
+
+            assertFalse(partFile.exists())
+            val updated = deps.repo.get("fx2")
+            assertEquals(DownloadKind.TORRENT, updated?.kind)
+            assertEquals(newTorrentSource, updated?.source)
+            assertNull(updated?.failure)
+            assertEquals(DownloadState.QUEUED, updated?.state)
+        }
+
+    @Test
+    fun FX3_replaceSource_httpToHttp_keepsThePartFile() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            deps.prefs.setMaxConcurrent(1)
+            deps.downloader.handler = { _, _ -> CompletableDeferred<HttpResult>().await() }
+            val activeReq = testRequest(videoId = "active_v3")
+            manager.enqueue(activeReq)
+            advanceUntilIdle()
+
+            val partFile = deps.fileStore.partFile("fx3")
+            partFile.writeBytes(ByteArray(400))
+
+            val item =
+                createTestDownloadItem(
+                    id = "fx3",
+                    state = DownloadState.FAILED,
+                    downloadedBytes = 400L,
+                ).copy(failure = DownloadFailure.LINK_EXPIRED)
+            deps.repo.insert(item)
+
+            val newHttpSource = DownloadSource.Http("https://new.com/video.mp4")
+            manager.replaceSource("fx3", newHttpSource)
+            advanceUntilIdle()
+
+            assertTrue(partFile.exists())
+            val updated = deps.repo.get("fx3")
+            assertEquals(400L, updated?.downloadedBytes)
+            assertEquals(newHttpSource, updated?.source)
+            assertNull(updated?.failure)
+            assertEquals(DownloadState.QUEUED, updated?.state)
+        }
+
+    @Test
+    fun FX4_replaceSource_torrentSameHash_keepsTheFolder() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            deps.prefs.setMaxConcurrent(1)
+            deps.downloader.handler = { _, _ -> CompletableDeferred<HttpResult>().await() }
+            val activeReq = testRequest(videoId = "active_v4")
+            manager.enqueue(activeReq)
+            advanceUntilIdle()
+
+            val hash = "0123456789abcdef0123456789abcdef01234567"
+            val torrentFolder = File(deps.fileStore.root, "torrents/fx4")
+            torrentFolder.mkdirs()
+            File(torrentFolder, "video.mp4").writeBytes(ByteArray(500))
+
+            val item =
+                createTestTorrentDownloadItem(
+                    id = "fx4",
+                    state = DownloadState.FAILED,
+                    hash = hash,
+                ).copy(
+                    source = DownloadSource.Torrent(hash, fileIdx = 0),
+                    failure = DownloadFailure.TORRENT_ENGINE,
+                )
+            deps.repo.insert(item)
+
+            val updatedTorrentSource =
+                DownloadSource.Torrent(
+                    infoHash = hash,
+                    trackers = listOf("udp://tracker2.example.com:80"),
+                    fileIdx = 1,
+                )
+            manager.replaceSource("fx4", updatedTorrentSource)
+            advanceUntilIdle()
+
+            assertTrue(torrentFolder.exists())
+            val updated = deps.repo.get("fx4")
+            assertEquals(updatedTorrentSource, updated?.source)
+            assertEquals(1, (updated?.source as? DownloadSource.Torrent)?.fileIdx)
+            assertNull(updated?.failure)
+            assertEquals(DownloadState.QUEUED, updated?.state)
+        }
+
+    @Test
+    fun FX5_replaceSource_notFailed_isIgnored() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            val partFile = deps.fileStore.partFile("dl_item")
+            partFile.writeBytes(ByteArray(100))
+
+            val downloading =
+                createTestDownloadItem("dl_item", state = DownloadState.DOWNLOADING, downloadedBytes = 100L)
+            val completed =
+                createTestDownloadItem("comp_item", state = DownloadState.COMPLETED, downloadedBytes = 200L)
+            val paused =
+                createTestDownloadItem("pause_item", state = DownloadState.PAUSED, downloadedBytes = 50L)
+            deps.repo.insert(downloading)
+            deps.repo.insert(completed)
+            deps.repo.insert(paused)
+
+            val newSource = DownloadSource.Http("https://new.com/video.mp4")
+            manager.replaceSource("dl_item", newSource)
+            manager.replaceSource("comp_item", newSource)
+            manager.replaceSource("pause_item", newSource)
+
+            assertTrue(partFile.exists())
+            assertEquals(downloading, deps.repo.get("dl_item"))
+            assertEquals(completed, deps.repo.get("comp_item"))
+            assertEquals(paused, deps.repo.get("pause_item"))
         }
 
     private fun testTorrentRequest(

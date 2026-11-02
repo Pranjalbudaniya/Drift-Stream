@@ -734,7 +734,7 @@ class StreamsViewModel
             val replaceId = req.replaceDownloadId
             if (replaceId != null) {
                 downloadManager.replaceSource(replaceId, downloadSource)
-                _effects.emit(StreamsEffect.ShowMessage(R.string.download_link_replaced))
+                _effects.emit(StreamsEffect.ShowMessage(R.string.download_source_replaced))
                 _effects.emit(StreamsEffect.DismissSheet)
             } else {
                 val display =

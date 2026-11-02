@@ -527,6 +527,30 @@ class DownloadsPresentationTest {
         assertEquals(listOf(RowMenuItem.CANCEL), rowMenu(downloading))
 
         val failed = createItem(state = DownloadState.FAILED)
-        assertEquals(listOf(RowMenuItem.REMOVE), rowMenu(failed))
+        assertEquals(listOf(RowMenuItem.FIND_DIFFERENT_SOURCE, RowMenuItem.REMOVE), rowMenu(failed))
+    }
+
+    @Test
+    fun DP35_menu_failedItem_hasFindDifferentSource_forEveryFailure() {
+        for (failure in DownloadFailure.entries) {
+            val item = createItem(state = DownloadState.FAILED).copy(failure = failure)
+            assertEquals(
+                listOf(RowMenuItem.FIND_DIFFERENT_SOURCE, RowMenuItem.REMOVE),
+                rowMenu(item),
+            )
+        }
+    }
+
+    @Test
+    fun DP39_status_failedRow_showsTheReasonAndTheCode() {
+        val torrentEngineItem = createItem(state = DownloadState.FAILED).copy(failure = DownloadFailure.TORRENT_ENGINE)
+        val torrentEngineStatus = rowStatus(torrentEngineItem)
+        assertEquals(R.string.downloads_failed_with_code, torrentEngineStatus.stringRes)
+        assertEquals(listOf(R.string.download_failure_torrent_engine, "TORRENT_ENGINE"), torrentEngineStatus.args)
+
+        val unknownItem = createItem(state = DownloadState.FAILED).copy(failure = DownloadFailure.UNKNOWN)
+        val unknownStatus = rowStatus(unknownItem)
+        assertEquals(R.string.downloads_failed_with_code, unknownStatus.stringRes)
+        assertEquals(listOf(R.string.download_failure_unknown, "UNKNOWN"), unknownStatus.args)
     }
 }

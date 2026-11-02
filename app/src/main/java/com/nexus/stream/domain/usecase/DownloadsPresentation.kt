@@ -232,14 +232,41 @@ fun rowStatus(
     live: DownloadLive? = null,
 ): StatusText =
     when (item.state) {
-        DownloadState.DOWNLOADING -> StatusResolvers.downloadingStatus(item, live)
-        DownloadState.QUEUED -> StatusText(R.string.downloads_status_queued)
-        DownloadState.WAITING_FOR_WIFI -> StatusText(R.string.downloads_status_wifi)
-        DownloadState.WAITING_FOR_NETWORK -> StatusText(R.string.downloads_status_network)
-        DownloadState.NEEDS_FILE_PICK -> StatusText(R.string.downloads_action_choose_file)
-        DownloadState.PAUSED -> StatusResolvers.pausedStatus(item)
-        DownloadState.FAILED -> StatusText(failureReasonRes(item.failure ?: DownloadFailure.UNKNOWN))
-        DownloadState.COMPLETED -> StatusResolvers.completedStatus(item, live)
+        DownloadState.DOWNLOADING -> {
+            StatusResolvers.downloadingStatus(item, live)
+        }
+
+        DownloadState.QUEUED -> {
+            StatusText(R.string.downloads_status_queued)
+        }
+
+        DownloadState.WAITING_FOR_WIFI -> {
+            StatusText(R.string.downloads_status_wifi)
+        }
+
+        DownloadState.WAITING_FOR_NETWORK -> {
+            StatusText(R.string.downloads_status_network)
+        }
+
+        DownloadState.NEEDS_FILE_PICK -> {
+            StatusText(R.string.downloads_action_choose_file)
+        }
+
+        DownloadState.PAUSED -> {
+            StatusResolvers.pausedStatus(item)
+        }
+
+        DownloadState.FAILED -> {
+            val failure = item.failure ?: DownloadFailure.UNKNOWN
+            StatusText(
+                R.string.downloads_failed_with_code,
+                listOf(failureReasonRes(failure), failure.name),
+            )
+        }
+
+        DownloadState.COMPLETED -> {
+            StatusResolvers.completedStatus(item, live)
+        }
     }
 
 enum class ActionIcon {
@@ -329,6 +356,7 @@ enum class RowMenuItem {
     SAVE_TO_GALLERY,
     REMOVE_FROM_GALLERY,
     RETRY_GALLERY,
+    FIND_DIFFERENT_SOURCE,
     CANCEL,
     DELETE,
     REMOVE,
@@ -350,7 +378,7 @@ fun rowMenu(item: DownloadItem): List<RowMenuItem> =
         }
 
         DownloadState.FAILED -> {
-            listOf(RowMenuItem.REMOVE)
+            listOf(RowMenuItem.FIND_DIFFERENT_SOURCE, RowMenuItem.REMOVE)
         }
 
         else -> {

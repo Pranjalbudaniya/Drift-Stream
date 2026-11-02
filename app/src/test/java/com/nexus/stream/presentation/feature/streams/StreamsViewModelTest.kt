@@ -1864,4 +1864,46 @@ class StreamsViewModelTest {
             assertEquals(1, state.filteredStreams.size)
             assertFalse(state.isDownloadEmpty)
         }
+
+    @Test
+    fun SD9_downloadMode_replaceId_withTorrentRow_callsReplaceSource() =
+        runTest {
+            val request = sampleRequest.copy(downloadMode = true, replaceDownloadId = "dl-replace-torrent")
+            val streamFlow = MutableSharedFlow<StreamsState>()
+            every { streamRepository.streams(any(), any(), any(), any()) } returns streamFlow
+
+            val viewModel = createViewModel()
+            viewModel.onEvent(StreamsEvent.SetRequest(request))
+            runCurrent()
+
+            val effects = mutableListOf<StreamsEffect>()
+            val job = launch { viewModel.effects.toList(effects) }
+
+            val torrentStream = createParsedStream("t1", kind = StreamKind.Torrent)
+            streamFlow.emit(
+                StreamsState(
+                    items = listOf(torrentStream),
+                    answered = 1,
+                    total = 1,
+                    failures = emptyList(),
+                    done = true,
+                ),
+            )
+            runCurrent()
+
+            viewModel.onEvent(StreamsEvent.PlayStream(torrentStream))
+            runCurrent()
+
+            assertEquals(1, fakeDownloadManager.replaceSourceCalls.size)
+            assertEquals("dl-replace-torrent", fakeDownloadManager.replaceSourceCalls[0].first)
+            assertTrue(fakeDownloadManager.replaceSourceCalls[0].second is DownloadSource.Torrent)
+            assertTrue(fakeDownloadManager.enqueueCalls.isEmpty())
+            assertTrue(
+                effects.any {
+                    it is StreamsEffect.ShowMessage && it.messageRes == R.string.download_source_replaced
+                },
+            )
+
+            job.cancel()
+        }
 }

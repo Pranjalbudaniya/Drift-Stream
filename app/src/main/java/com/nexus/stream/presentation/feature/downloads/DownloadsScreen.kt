@@ -290,6 +290,7 @@ fun DownloadsScreenContent(
                                     onChooseFile = { onEvent(DownloadsEvent.ChooseFile(it)) },
                                     onSaveToGallery = { onEvent(DownloadsEvent.SaveToGallery(it)) },
                                     onRemoveFromGallery = { onEvent(DownloadsEvent.RemoveFromGallery(it)) },
+                                    onFindDifferentSource = { onEvent(DownloadsEvent.FindDifferentSource(it)) },
                                     modifier = Modifier.animateItem(),
                                 )
                             }

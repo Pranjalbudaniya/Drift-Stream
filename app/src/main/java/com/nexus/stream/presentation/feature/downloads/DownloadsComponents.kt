@@ -117,7 +117,9 @@ fun formatStatusText(status: StatusText): String {
                 }
 
                 is Int -> {
-                    if (status.stringRes == R.string.downloads_gallery_failed) {
+                    if (status.stringRes == R.string.downloads_gallery_failed ||
+                        status.stringRes == R.string.downloads_failed_with_code
+                    ) {
                         stringResource(arg)
                     } else {
                         arg
@@ -357,6 +359,7 @@ fun DownloadRow(
     onChooseFile: (String) -> Unit = {},
     onSaveToGallery: (String) -> Unit = {},
     onRemoveFromGallery: (String) -> Unit = {},
+    onFindDifferentSource: (DownloadItem) -> Unit = {},
 ) {
     val context = LocalContext.current
     val spacing = NexusTheme.spacing
@@ -421,6 +424,7 @@ fun DownloadRow(
             onChooseFile = onChooseFile,
             onSaveToGallery = onSaveToGallery,
             onRemoveFromGallery = onRemoveFromGallery,
+            onFindDifferentSource = onFindDifferentSource,
         )
     }
 }
@@ -519,6 +523,7 @@ private object DownloadRowActionsContent {
         onRequestDelete: (String) -> Unit,
         onSaveToGallery: (String) -> Unit,
         onRemoveFromGallery: (String) -> Unit,
+        onFindDifferentSource: (DownloadItem) -> Unit = {},
     ) {
         var menuExpanded by remember { mutableStateOf(false) }
         Box {
@@ -586,6 +591,16 @@ private object DownloadRowActionsContent {
                             )
                         }
 
+                        RowMenuItem.FIND_DIFFERENT_SOURCE -> {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.downloads_menu_find_source)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onFindDifferentSource(item)
+                                },
+                            )
+                        }
+
                         RowMenuItem.REMOVE -> {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.downloads_action_remove)) },
@@ -614,6 +629,7 @@ fun DownloadRowActions(
     onChooseFile: (String) -> Unit,
     onSaveToGallery: (String) -> Unit,
     onRemoveFromGallery: (String) -> Unit,
+    onFindDifferentSource: (DownloadItem) -> Unit = {},
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -634,6 +650,7 @@ fun DownloadRowActions(
             onRequestDelete = onRequestDelete,
             onSaveToGallery = onSaveToGallery,
             onRemoveFromGallery = onRemoveFromGallery,
+            onFindDifferentSource = onFindDifferentSource,
         )
     }
 }

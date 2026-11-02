@@ -108,7 +108,16 @@ class FakeDownloadRepository : DownloadRepository {
         updatedAt: Long,
     ) {
         val cur = itemsMap.value[id] ?: return
-        itemsMap.value += (id to cur.copy(source = source, state = state, updatedAt = updatedAt))
+        itemsMap.value += (
+            id to
+                cur.copy(
+                    source = source,
+                    state = state,
+                    failure = null,
+                    pauseReason = null,
+                    updatedAt = updatedAt,
+                )
+        )
     }
 
     override suspend fun setAllowMetered(

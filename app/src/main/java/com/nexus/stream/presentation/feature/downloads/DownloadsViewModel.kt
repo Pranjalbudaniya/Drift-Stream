@@ -133,6 +133,10 @@ sealed interface DownloadsEvent {
         val item: DownloadItem,
     ) : DownloadsEvent
 
+    data class FindDifferentSource(
+        val item: DownloadItem,
+    ) : DownloadsEvent
+
     data object DismissNotificationsBanner : DownloadsEvent
 
     data object PauseAll : DownloadsEvent
@@ -378,6 +382,10 @@ class DownloadsViewModel(
             }
 
             is DownloadsEvent.FindNewLink -> {
+                handleFindNewLink(event.item)
+            }
+
+            is DownloadsEvent.FindDifferentSource -> {
                 handleFindNewLink(event.item)
             }
 

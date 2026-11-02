@@ -116,6 +116,8 @@ class DownloadRepositoryImpl
                             trackersJson = null,
                             fileIdx = null,
                             state = state.name,
+                            failure = null,
+                            pauseReason = null,
                             updatedAt = updatedAt,
                         )
                     }
@@ -129,6 +131,8 @@ class DownloadRepositoryImpl
                             trackersJson = DownloadMapper.serializeList(source.trackers),
                             fileIdx = source.fileIdx,
                             state = state.name,
+                            failure = null,
+                            pauseReason = null,
                             updatedAt = updatedAt,
                         )
                     }

@@ -919,5 +919,9 @@
     <string name="download_failure_incomplete">The download didn\'t finish</string>
     <string name="download_failure_no_peers">No peers found</string>
     <string name="download_failure_torrent_in_use">This torrent is playing right now. Try again later.</string>
+    <string name="download_failure_torrent_engine">The torrent engine couldn\'t start this download</string>
+    <string name="downloads_failed_with_code">%1$s · %2$s</string>
+    <string name="downloads_menu_find_source">Find a different source</string>
+    <string name="download_source_replaced">Source replaced. Download starting.</string>
 </resources>
 

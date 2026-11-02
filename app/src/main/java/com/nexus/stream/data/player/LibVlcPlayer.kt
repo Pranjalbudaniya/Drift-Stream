@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import android.view.View
 import com.nexus.stream.di.IoDispatcher
+import com.nexus.stream.domain.usecase.GateAction
+import com.nexus.stream.domain.usecase.PlaybackSurfaceGate
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +44,8 @@ class LibVlcPlayer(
     override val tracks: StateFlow<PlayerTracks> = _tracks.asStateFlow()
 
     private var currentMedia: Media? = null
+    private var currentLayout: VLCVideoLayout? = null
+    private val gate = PlaybackSurfaceGate()
     private val released = AtomicBoolean(false)
 
     init {
@@ -137,15 +141,28 @@ class LibVlcPlayer(
 
     override fun createSurface(context: Context): View {
         val layout = VLCVideoLayout(context)
+        currentLayout = layout
         mediaPlayer.attachViews(layout, null, true, false)
+        val actions = gate.onSurfaceAttached(System.identityHashCode(layout))
+        executeGateActions(actions)
         return layout
     }
 
     override fun detachSurface() {
+        val layout = currentLayout
         mediaPlayer.vlcVout.detachViews()
+        if (layout != null) {
+            val actions = gate.onSurfaceDetached(System.identityHashCode(layout))
+            executeGateActions(actions)
+        }
     }
 
     override fun play(url: String) {
+        val actions = gate.onPlayRequested(url)
+        executeGateActions(actions)
+    }
+
+    private fun startPlaybackInternal(url: String) {
         val oldMedia = currentMedia
         val media = Media(libVlc, Uri.parse(url))
         currentMedia = media
@@ -155,6 +172,37 @@ class LibVlcPlayer(
             it.copy(failed = false, ended = false)
         }
         mediaPlayer.play()
+    }
+
+    private fun executeGateActions(actions: List<GateAction>) {
+        for (action in actions) {
+            when (action) {
+                is GateAction.StartPlayback -> {
+                    startPlaybackInternal(action.url)
+                }
+
+                GateAction.PausePlayback -> {
+                    mediaPlayer.pause()
+                }
+
+                GateAction.DetachVideo -> {
+                    mediaPlayer.vlcVout.detachViews()
+                }
+
+                GateAction.AttachVideo -> {
+                    currentLayout?.let { mediaPlayer.attachViews(it, null, true, false) }
+                }
+
+                GateAction.DetachPreviousThenAttach -> {
+                    mediaPlayer.vlcVout.detachViews()
+                    currentLayout?.let { mediaPlayer.attachViews(it, null, true, false) }
+                }
+
+                GateAction.NudgeFrame -> {
+                    mediaPlayer.time = mediaPlayer.time
+                }
+            }
+        }
     }
 
     override fun pause() {
@@ -213,8 +261,23 @@ class LibVlcPlayer(
         mediaPlayer.videoScale = scaleType
     }
 
+    override fun onAppBackgrounded() {
+        val isPlaying = _snapshot.value.isPlaying
+        val actions = gate.onBackground(isPlaying)
+        executeGateActions(actions)
+    }
+
+    override fun onAppForegrounded() {
+        val mediaLoaded = currentMedia != null
+        val isPlaying = _snapshot.value.isPlaying
+        val actions = gate.onForeground(mediaLoaded, isPlaying)
+        executeGateActions(actions)
+    }
+
     override fun release() {
         if (released.compareAndSet(false, true)) {
+            gate.onReleased()
+            currentLayout = null
             mediaPlayer.setEventListener(null)
             mediaPlayer.vlcVout.detachViews()
             currentMedia?.release()

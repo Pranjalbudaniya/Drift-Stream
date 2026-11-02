@@ -200,7 +200,9 @@ fun PlayerScreen(
     DisposableEffect(lifecycleOwner) {
         val observer =
             LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_STOP) {
+                if (event == Lifecycle.Event.ON_START) {
+                    viewModel.onEvent(PlayerEvent.AppStarted)
+                } else if (event == Lifecycle.Event.ON_STOP) {
                     viewModel.onEvent(PlayerEvent.AppStopped)
                 }
             }

@@ -233,6 +233,8 @@ sealed interface PlayerEvent {
 
     data object AppStopped : PlayerEvent
 
+    data object AppStarted : PlayerEvent
+
     data class PickFile(
         val index: Int,
     ) : PlayerEvent
@@ -621,6 +623,7 @@ class PlayerViewModel
                 is PlayerEvent.HoldSpeed -> handleHoldSpeed(event.active)
                 PlayerEvent.ToggleControls -> handleToggleControls()
                 PlayerEvent.AppStopped -> handleAppStopped()
+                PlayerEvent.AppStarted -> handleAppStarted()
                 is PlayerEvent.PickFile -> handlePickFile(event.index)
                 PlayerEvent.AllowMeteredOnce -> handleAllowMeteredOnce()
                 PlayerEvent.Retry -> handleRetry()
@@ -935,7 +938,12 @@ class PlayerViewModel
                 if (ctrl.snapshot.value.isPlaying) {
                     ctrl.pause()
                 }
+                ctrl.onAppBackgrounded()
             }
+        }
+
+        private fun handleAppStarted() {
+            controller?.onAppForegrounded()
         }
 
         private fun handlePickFile(index: Int) {

@@ -23,11 +23,13 @@ import com.nexus.stream.domain.usecase.hasEnoughStorage
 import com.nexus.stream.domain.usecase.metadataTimedOut
 import com.nexus.stream.domain.usecase.phaseOf
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.async
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URLEncoder
@@ -71,26 +73,20 @@ class TorrentDownloaderImpl(
             val magnetUri = buildMagnetUri(task.infoHash, task.trackers)
             try {
                 backend.addForDownload(task.infoHash, magnetUri, task.saveDir)
-            } catch (_: TorrentBackendException) {
-                backend.removeKeepingFiles(task.infoHash)
-                return@withContext TorrentResult.Failed(DownloadFailure.TORRENT_ENGINE)
+                executeDownload(task, onUpdate)
             } catch (e: CancellationException) {
                 backend.removeKeepingFiles(task.infoHash)
                 throw e
-            }
-
-            try {
-                executeDownload(task, onUpdate)
-            } catch (_: TorrentBackendException) {
+            } catch (_: Exception) {
                 backend.removeKeepingFiles(task.infoHash)
                 TorrentResult.Failed(DownloadFailure.TORRENT_ENGINE)
-            } catch (e: CancellationException) {
+            } catch (_: LinkageError) {
                 backend.removeKeepingFiles(task.infoHash)
-                throw e
+                TorrentResult.Failed(DownloadFailure.TORRENT_ENGINE)
             }
         }
 
-    private suspend fun CoroutineScope.executeDownload(
+    private suspend fun executeDownload(
         task: TorrentTask,
         onUpdate: (TorrentUpdate) -> Unit,
     ): TorrentResult =
@@ -105,10 +101,13 @@ class TorrentDownloaderImpl(
             }
         }
 
-    private suspend fun CoroutineScope.setupTransfer(task: TorrentTask): TransferSetup {
+    private suspend fun setupTransfer(task: TorrentTask): TransferSetup {
         val meta =
             fetchMetadata(task)
-                ?: return TransferSetup.Failure(TorrentResult.Failed(DownloadFailure.TORRENT_NO_PEERS))
+                ?: run {
+                    backend.removeKeepingFiles(task.infoHash)
+                    return TransferSetup.Failure(TorrentResult.Failed(DownloadFailure.TORRENT_NO_PEERS))
+                }
 
         return resolveSetup(task, meta)
     }
@@ -193,19 +192,34 @@ class TorrentDownloaderImpl(
         }
     }
 
-    private suspend fun CoroutineScope.fetchMetadata(task: TorrentTask): TorrentMetadata? {
-        val metaDeferred = async(ioDispatcher) { backend.awaitMetadata(task.infoHash) }
-        val startedAt = nowMs()
-        while (!metaDeferred.isCompleted) {
-            coroutineContext.ensureActive()
-            if (metadataTimedOut(startedAt, nowMs(), false)) {
-                metaDeferred.cancel()
-                backend.removeKeepingFiles(task.infoHash)
-                return null
+    private suspend fun fetchMetadata(task: TorrentTask): TorrentMetadata? {
+        val metaDeferred = CompletableDeferred<TorrentMetadata>()
+        val job =
+            CoroutineScope(coroutineContext + SupervisorJob()).launch(ioDispatcher) {
+                try {
+                    val meta = backend.awaitMetadata(task.infoHash)
+                    metaDeferred.complete(meta)
+                } catch (expected: Exception) {
+                    metaDeferred.completeExceptionally(expected)
+                } catch (expected: LinkageError) {
+                    metaDeferred.completeExceptionally(expected)
+                }
             }
-            delayFn(TORRENT_DOWNLOAD_POLL_INTERVAL_MS)
+        val startedAt = nowMs()
+        try {
+            while (!metaDeferred.isCompleted) {
+                coroutineContext.ensureActive()
+                if (metadataTimedOut(startedAt, nowMs(), false)) {
+                    metaDeferred.cancel()
+                    job.cancel()
+                    return null
+                }
+                delayFn(TORRENT_DOWNLOAD_POLL_INTERVAL_MS)
+            }
+            return metaDeferred.await()
+        } finally {
+            job.cancel()
         }
-        return metaDeferred.await()
     }
 
     private suspend fun pollProgress(

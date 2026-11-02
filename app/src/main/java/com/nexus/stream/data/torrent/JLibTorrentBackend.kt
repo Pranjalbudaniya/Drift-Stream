@@ -44,7 +44,7 @@ class JLibTorrentBackend
         private var sessionManager: SessionManager? = null
 
         private val downloadHashes = ConcurrentHashMap.newKeySet<String>()
-        private val deferredMap = ConcurrentHashMap<String, CompletableDeferred<TorrentMetadata>>()
+        private val metadataRegistry = MetadataRegistry()
         private val errorHashes = ConcurrentHashMap.newKeySet<String>()
 
         private val alertListener =
@@ -79,7 +79,7 @@ class JLibTorrentBackend
             if (handle.isValid) {
                 val hash = handle.infoHash().toHex().lowercase()
                 errorHashes.add(hash)
-                deferredMap[hash]?.completeExceptionally(TorrentBackendException(TorrentFailReason.STORAGE))
+                metadataRegistry.fail(hash, TorrentBackendException(TorrentFailReason.STORAGE))
             }
         }
 
@@ -113,7 +113,7 @@ class JLibTorrentBackend
                     files = filesList,
                     pieceLength = ti.pieceLength().toLong(),
                 )
-            deferredMap[hash]?.complete(metadata)
+            metadataRegistry.complete(hash, metadata)
         }
 
         private suspend fun getOrCreateSession(): SessionManager =
@@ -139,8 +139,7 @@ class JLibTorrentBackend
             magnetUri: String,
         ) = withContext(io) {
             val hash = infoHash.lowercase()
-            val deferred = CompletableDeferred<TorrentMetadata>()
-            deferredMap[hash] = deferred
+            metadataRegistry.register(hash)
             errorHashes.remove(hash)
 
             runCatchingLibraryCall {
@@ -170,10 +169,7 @@ class JLibTorrentBackend
                 if (errorHashes.contains(hash)) {
                     throw TorrentBackendException(TorrentFailReason.STORAGE)
                 }
-                val deferred = deferredMap[hash] ?: throw TorrentBackendException(TorrentFailReason.STORAGE)
-                runCatchingLibraryCall(TorrentFailReason.STORAGE) {
-                    deferred.await()
-                }
+                metadataRegistry.await(hash)
             }
 
         override suspend fun prioritize(
@@ -235,7 +231,7 @@ class JLibTorrentBackend
         ) = withContext(io) {
             val hash = infoHash.lowercase()
             val shouldKeep = keep ?: cache.keepAfterStop()
-            deferredMap.remove(hash)?.cancel()
+            metadataRegistry.remove(hash)
             errorHashes.remove(hash)
 
             runCatching {
@@ -278,13 +274,34 @@ class JLibTorrentBackend
         ) {
             val lowerHash = infoHash.lowercase()
             downloadHashes.add(lowerHash)
+            errorHashes.remove(lowerHash)
+            metadataRegistry.register(lowerHash)
             withContext(io) {
                 val sm = getOrCreateSession()
                 if (!saveDir.exists()) {
                     saveDir.mkdirs()
                 }
-                runCatchingLibraryCall {
-                    sm.download(magnetUri, saveDir, TorrentFlags.AUTO_MANAGED)
+                val existing = sm.find(Sha1Hash(lowerHash))
+                if (existing != null && existing.isValid) {
+                    val numFiles = existing.torrentFile()?.numFiles() ?: 0
+                    if (numFiles > 0) {
+                        existing.prioritizeFiles(Priority.array(Priority.IGNORE, numFiles))
+                    }
+                    val ti = existing.torrentFile()
+                    if (ti != null) {
+                        handleMetadata(existing, ti, lowerHash)
+                    }
+                } else {
+                    runCatchingLibraryCall {
+                        sm.download(magnetUri, saveDir, TorrentFlags.AUTO_MANAGED)
+                        val handle = sm.find(Sha1Hash(lowerHash))
+                        if (handle != null && handle.isValid && handle.status().hasMetadata()) {
+                            val ti = handle.torrentFile()
+                            if (ti != null) {
+                                handleMetadata(handle, ti, lowerHash)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -382,7 +399,7 @@ class JLibTorrentBackend
         override suspend fun removeKeepingFiles(infoHash: String) {
             val lowerHash = infoHash.lowercase()
             downloadHashes.remove(lowerHash)
-            deferredMap.remove(lowerHash)
+            metadataRegistry.remove(lowerHash)
             errorHashes.remove(lowerHash)
             withContext(io) {
                 val sm = sessionManager ?: return@withContext
@@ -398,7 +415,7 @@ class JLibTorrentBackend
         override suspend fun removeAndDelete(infoHash: String) {
             val lowerHash = infoHash.lowercase()
             downloadHashes.remove(lowerHash)
-            deferredMap.remove(lowerHash)
+            metadataRegistry.remove(lowerHash)
             errorHashes.remove(lowerHash)
             withContext(io) {
                 val sm = sessionManager ?: return@withContext

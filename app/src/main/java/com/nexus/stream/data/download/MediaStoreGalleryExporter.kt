@@ -14,6 +14,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.OutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,6 +30,7 @@ class MediaStoreGalleryExporter
             displayName: String,
             mimeType: String,
             onProgress: (copiedBytes: Long, totalBytes: Long) -> Unit,
+            onRowCreated: (suspend (uri: String) -> Unit)?,
         ): GalleryExportResult =
             withContext(ioDispatcher) {
                 val resolver = context.contentResolver
@@ -48,6 +50,8 @@ class MediaStoreGalleryExporter
                         null
                     } ?: return@withContext GalleryExportResult.Failed(GalleryFailure.UNAVAILABLE)
 
+                onRowCreated?.invoke(itemUri.toString())
+
                 try {
                     val outputStream =
                         resolver.openOutputStream(itemUri)
@@ -56,35 +60,52 @@ class MediaStoreGalleryExporter
                                 return@withContext GalleryExportResult.Failed(GalleryFailure.WRITE_FAILED)
                             }
 
-                    val buffer = ByteArray(DOWNLOAD_CHUNK_BYTES)
-                    var copied = 0L
-                    val total = file.length()
-
-                    file.inputStream().use { input ->
-                        outputStream.use { output ->
-                            var bytesRead = input.read(buffer)
-                            while (bytesRead != -1) {
-                                output.write(buffer, 0, bytesRead)
-                                copied += bytesRead
-                                onProgress(copied, total)
-                                bytesRead = input.read(buffer)
-                            }
-                            output.flush()
-                        }
-                    }
+                    copyFileToStream(file, outputStream, onProgress)
 
                     val publishValues =
                         ContentValues().apply {
                             put(MediaStore.Video.Media.IS_PENDING, 0)
                         }
                     resolver.update(itemUri, publishValues, null, null)
-                    GalleryExportResult.Saved(itemUri.toString())
+
+                    val path = resolvePath(itemUri.toString())
+                    if (path == null || !File(path).canRead()) {
+                        runCatching { resolver.delete(itemUri, null, null) }
+                        return@withContext GalleryExportResult.Failed(GalleryFailure.UNAVAILABLE)
+                    }
+
+                    GalleryExportResult.Saved(itemUri.toString(), path)
                 } catch (e: CancellationException) {
                     runCatching { resolver.delete(itemUri, null, null) }
                     throw e
                 } catch (_: Exception) {
                     runCatching { resolver.delete(itemUri, null, null) }
                     GalleryExportResult.Failed(GalleryFailure.WRITE_FAILED)
+                }
+            }
+
+        override suspend fun resolvePath(uri: String): String? =
+            withContext(ioDispatcher) {
+                val parsedUri = runCatching { Uri.parse(uri) }.getOrNull() ?: return@withContext null
+                val resolver = context.contentResolver
+                try {
+                    resolver
+                        .query(
+                            parsedUri,
+                            arrayOf(MediaStore.MediaColumns.DATA),
+                            null,
+                            null,
+                            null,
+                        )?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val idx = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+                                if (idx >= 0) cursor.getString(idx) else null
+                            } else {
+                                null
+                            }
+                        }
+                } catch (_: Exception) {
+                    null
                 }
             }
 
@@ -132,3 +153,25 @@ class MediaStoreGalleryExporter
             }
         }
     }
+
+private fun copyFileToStream(
+    file: File,
+    outputStream: OutputStream,
+    onProgress: (copiedBytes: Long, totalBytes: Long) -> Unit,
+) {
+    val buffer = ByteArray(DOWNLOAD_CHUNK_BYTES)
+    var copied = 0L
+    val total = file.length()
+    file.inputStream().use { input ->
+        outputStream.use { output ->
+            var bytesRead = input.read(buffer)
+            while (bytesRead != -1) {
+                output.write(buffer, 0, bytesRead)
+                copied += bytesRead
+                onProgress(copied, total)
+                bytesRead = input.read(buffer)
+            }
+            output.flush()
+        }
+    }
+}

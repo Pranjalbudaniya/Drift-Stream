@@ -437,20 +437,18 @@ class DownloadsViewModelTest {
             val item = createTestDownloadItem("c1", state = DownloadState.COMPLETED)
             downloadManager.itemsFlow.value = listOf(item)
 
-            viewModel.onEvent(DownloadsEvent.SaveToGallery("c1"))
-            assertEquals(listOf("c1"), downloadManager.exportToGalleryCalls)
+            viewModel.onEvent(DownloadsEvent.MoveToGallery("c1"))
+            assertEquals(listOf("c1"), downloadManager.moveToGalleryCalls)
         }
 
     @Test
     fun DW24_removeFromGallery_callsTheManager() =
         runTest {
-            val item =
-                createTestDownloadItem("c2", state = DownloadState.COMPLETED)
-                    .copy(galleryState = com.nexus.stream.domain.model.GalleryState.SAVED)
+            val item = createTestDownloadItem("c2", state = DownloadState.COMPLETED)
             downloadManager.itemsFlow.value = listOf(item)
 
-            viewModel.onEvent(DownloadsEvent.RemoveFromGallery("c2"))
-            assertEquals(listOf("c2"), downloadManager.removeFromGalleryCalls)
+            viewModel.onEvent(DownloadsEvent.MoveToGallery("c2"))
+            assertEquals(listOf("c2"), downloadManager.moveToGalleryCalls)
         }
 
     @Test

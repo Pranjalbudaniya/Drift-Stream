@@ -154,11 +154,7 @@ sealed interface DownloadsEvent {
 
     data object DismissPick : DownloadsEvent
 
-    data class SaveToGallery(
-        val id: String,
-    ) : DownloadsEvent
-
-    data class RemoveFromGallery(
+    data class MoveToGallery(
         val id: String,
     ) : DownloadsEvent
 
@@ -345,13 +341,8 @@ class DownloadsViewModel(
                 true
             }
 
-            is DownloadsEvent.SaveToGallery -> {
-                viewModelScope.launch { downloadManager.exportToGallery(event.id) }
-                true
-            }
-
-            is DownloadsEvent.RemoveFromGallery -> {
-                viewModelScope.launch { downloadManager.removeFromGallery(event.id) }
+            is DownloadsEvent.MoveToGallery -> {
+                viewModelScope.launch { downloadManager.moveToGallery(event.id) }
                 true
             }
 

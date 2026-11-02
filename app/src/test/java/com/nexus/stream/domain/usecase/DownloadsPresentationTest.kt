@@ -515,13 +515,13 @@ class DownloadsPresentationTest {
     @Test
     fun DP34_rowMenu_perState() {
         val completedNone = createItem(state = DownloadState.COMPLETED).copy(galleryState = GalleryState.NONE)
-        assertEquals(listOf(RowMenuItem.SAVE_TO_GALLERY, RowMenuItem.DELETE), rowMenu(completedNone))
+        assertEquals(listOf(RowMenuItem.MOVE_TO_GALLERY, RowMenuItem.DELETE), rowMenu(completedNone))
 
         val completedSaved = createItem(state = DownloadState.COMPLETED).copy(galleryState = GalleryState.SAVED)
-        assertEquals(listOf(RowMenuItem.REMOVE_FROM_GALLERY, RowMenuItem.DELETE), rowMenu(completedSaved))
+        assertEquals(listOf(RowMenuItem.DELETE), rowMenu(completedSaved))
 
         val completedFailed = createItem(state = DownloadState.COMPLETED).copy(galleryState = GalleryState.FAILED)
-        assertEquals(listOf(RowMenuItem.RETRY_GALLERY, RowMenuItem.DELETE), rowMenu(completedFailed))
+        assertEquals(listOf(RowMenuItem.RETRY_MOVE, RowMenuItem.DELETE), rowMenu(completedFailed))
 
         val downloading = createItem(state = DownloadState.DOWNLOADING)
         assertEquals(listOf(RowMenuItem.CANCEL), rowMenu(downloading))
@@ -539,6 +539,24 @@ class DownloadsPresentationTest {
                 rowMenu(item),
             )
         }
+    }
+
+    @Test
+    fun DP36_menu_completedPrivate_hasMoveToGallery() {
+        val item = createItem(state = DownloadState.COMPLETED).copy(galleryState = GalleryState.NONE)
+        assertEquals(listOf(RowMenuItem.MOVE_TO_GALLERY, RowMenuItem.DELETE), rowMenu(item))
+    }
+
+    @Test
+    fun DP37_menu_completedInGallery_hasNoGalleryAction() {
+        val item = createItem(state = DownloadState.COMPLETED).copy(galleryState = GalleryState.SAVED)
+        assertEquals(listOf(RowMenuItem.DELETE), rowMenu(item))
+    }
+
+    @Test
+    fun DP38_menu_galleryFailed_hasTryMovingAgain() {
+        val item = createItem(state = DownloadState.COMPLETED).copy(galleryState = GalleryState.FAILED)
+        assertEquals(listOf(RowMenuItem.RETRY_MOVE, RowMenuItem.DELETE), rowMenu(item))
     }
 
     @Test

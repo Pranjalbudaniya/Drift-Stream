@@ -353,9 +353,8 @@ fun storageCardModel(
 }
 
 enum class RowMenuItem {
-    SAVE_TO_GALLERY,
-    REMOVE_FROM_GALLERY,
-    RETRY_GALLERY,
+    MOVE_TO_GALLERY,
+    RETRY_MOVE,
     FIND_DIFFERENT_SOURCE,
     CANCEL,
     DELETE,
@@ -366,9 +365,9 @@ fun rowMenu(item: DownloadItem): List<RowMenuItem> =
     when (item.state) {
         DownloadState.COMPLETED -> {
             when (item.galleryState) {
-                GalleryState.NONE -> listOf(RowMenuItem.SAVE_TO_GALLERY, RowMenuItem.DELETE)
-                GalleryState.SAVED -> listOf(RowMenuItem.REMOVE_FROM_GALLERY, RowMenuItem.DELETE)
-                GalleryState.FAILED -> listOf(RowMenuItem.RETRY_GALLERY, RowMenuItem.DELETE)
+                GalleryState.NONE -> listOf(RowMenuItem.MOVE_TO_GALLERY, RowMenuItem.DELETE)
+                GalleryState.SAVED -> listOf(RowMenuItem.DELETE)
+                GalleryState.FAILED -> listOf(RowMenuItem.RETRY_MOVE, RowMenuItem.DELETE)
                 GalleryState.SAVING -> listOf(RowMenuItem.DELETE)
             }
         }

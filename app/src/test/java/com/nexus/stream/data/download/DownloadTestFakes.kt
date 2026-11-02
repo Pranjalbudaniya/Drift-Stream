@@ -333,10 +333,12 @@ class FakeTorrentDownloader : TorrentDownloader {
 class FakeGalleryExporter : GalleryExporter {
     val exportCalls = mutableListOf<ExportCall>()
     val deleteCalls = mutableListOf<String>()
+    val onRowCreatedCalls = mutableListOf<String>()
     var cleanupPendingCalled = 0
-    var nextResult: GalleryExportResult = GalleryExportResult.Saved("content://media/external/video/media/100")
+    var nextResult: GalleryExportResult = GalleryExportResult.Saved("content://media/external/video/media/100", "")
     var onExportHandler: (suspend (File, String, String, (Long, Long) -> Unit) -> GalleryExportResult)? = null
     val existingUris = mutableSetOf<String>()
+    val uriPaths = mutableMapOf<String, String>()
 
     data class ExportCall(
         val file: File,
@@ -349,20 +351,52 @@ class FakeGalleryExporter : GalleryExporter {
         displayName: String,
         mimeType: String,
         onProgress: (copiedBytes: Long, totalBytes: Long) -> Unit,
+        onRowCreated: (suspend (uri: String) -> Unit)?,
     ): GalleryExportResult {
         exportCalls.add(ExportCall(file, displayName, mimeType))
-        onExportHandler?.let { return it(file, displayName, mimeType, onProgress) }
-        val res = nextResult
+        val res = onExportHandler?.invoke(file, displayName, mimeType, onProgress) ?: nextResult
         if (res is GalleryExportResult.Saved) {
+            onRowCreated?.invoke(res.uri)
+            onRowCreatedCalls.add(res.uri)
             existingUris.add(res.uri)
+            val path =
+                if (res.filePath.isNotEmpty()) {
+                    res.filePath
+                } else {
+                    val galleryDir = File(System.getProperty("java.io.tmpdir"), "fake_gallery").apply { mkdirs() }
+                    val mockFile =
+                        File(galleryDir, displayName).apply {
+                            if (file.exists()) writeBytes(file.readBytes()) else writeBytes(ByteArray(100))
+                        }
+                    mockFile.absolutePath
+                }
+            uriPaths[res.uri] = path
+            return GalleryExportResult.Saved(res.uri, path)
         }
         return res
     }
 
     override suspend fun exists(uri: String): Boolean = existingUris.contains(uri)
 
+    override suspend fun resolvePath(uri: String): String? {
+        if (!existingUris.contains(uri)) return null
+        return uriPaths[uri] ?: run {
+            val galleryDir = File(System.getProperty("java.io.tmpdir"), "fake_gallery").apply { mkdirs() }
+            val mockFile =
+                File(galleryDir, "mock_${uri.hashCode()}.mp4").apply {
+                    if (!exists()) writeBytes(ByteArray(100))
+                }
+            uriPaths[uri] = mockFile.absolutePath
+            mockFile.absolutePath
+        }
+    }
+
     override suspend fun delete(uri: String): Boolean {
         deleteCalls.add(uri)
+        val path = uriPaths.remove(uri)
+        if (path != null) {
+            File(path).delete()
+        }
         return existingUris.remove(uri)
     }
 
@@ -563,20 +597,15 @@ class FakeDownloadManager : DownloadManager {
 
     override fun fileOf(id: String): File? = fileOfResult(id)
 
-    val exportToGalleryCalls = mutableListOf<String>()
-    val removeFromGalleryCalls = mutableListOf<String>()
-    var exportAllToGalleryCalls = 0
+    val moveToGalleryCalls = mutableListOf<String>()
+    var moveAllToGalleryCalls = 0
 
-    override suspend fun exportToGallery(id: String) {
-        exportToGalleryCalls.add(id)
+    override suspend fun moveToGallery(id: String) {
+        moveToGalleryCalls.add(id)
     }
 
-    override suspend fun removeFromGallery(id: String) {
-        removeFromGalleryCalls.add(id)
-    }
-
-    override suspend fun exportAllToGallery() {
-        exportAllToGalleryCalls++
+    override suspend fun moveAllToGallery() {
+        moveAllToGalleryCalls++
     }
 
     val selectTorrentFileCalls = mutableListOf<Pair<String, Int>>()

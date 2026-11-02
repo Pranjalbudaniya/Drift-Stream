@@ -556,13 +556,16 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
             assertEquals(DownloadState.COMPLETED, completedItem?.state)
             assertEquals(GalleryState.SAVING, completedItem?.galleryState)
 
-            exportDeferred.complete(GalleryExportResult.Saved("content://gallery/dune"))
+            val destFile = File(deps.fileStore.root, "dune_gallery.mp4").apply { writeBytes(ByteArray(100)) }
+            exportDeferred.complete(GalleryExportResult.Saved("content://gallery/dune", destFile.absolutePath))
             advanceUntilIdle()
 
             val savedItem = deps.repo.get(id)
             assertEquals(DownloadState.COMPLETED, savedItem?.state)
             assertEquals(GalleryState.SAVED, savedItem?.galleryState)
             assertEquals("content://gallery/dune", savedItem?.galleryUri)
+            assertEquals(destFile.absolutePath, savedItem?.filePath)
+            assertFalse(deps.fileStore.fileOf(id)?.exists() == true)
             assertEquals(1, deps.galleryExporter.exportCalls.size)
             assertEquals(
                 "Dune.mp4",
@@ -600,12 +603,13 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
             val item = createTestDownloadItem(id = "d3", state = DownloadState.COMPLETED, filePath = file.absolutePath)
             deps.repo.insert(item)
 
-            manager.exportToGallery("d3")
+            manager.moveToGallery("d3")
             advanceUntilIdle()
 
             val updated = deps.repo.get("d3")
             assertEquals(GalleryState.SAVED, updated?.galleryState)
             assertNotNull(updated?.galleryUri)
+            assertFalse(file.exists())
             assertEquals(1, deps.galleryExporter.exportCalls.size)
         }
 
@@ -621,7 +625,7 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
             val effects = mutableListOf<DownloadEffect>()
             val job = launch(UnconfinedTestDispatcher(testScheduler)) { manager.effects.collect { effects.add(it) } }
 
-            manager.exportToGallery("d4")
+            manager.moveToGallery("d4")
             advanceUntilIdle()
 
             val updated = deps.repo.get("d4")
@@ -642,7 +646,7 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
             deps.repo.insert(item)
             deps.galleryExporter.nextResult = GalleryExportResult.Failed(GalleryFailure.WRITE_FAILED)
 
-            manager.exportToGallery("d5")
+            manager.moveToGallery("d5")
             advanceUntilIdle()
 
             val updated = deps.repo.get("d5")
@@ -658,7 +662,7 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
                 { _, _, _, _ -> throw kotlinx.coroutines.CancellationException("test") }
 
             runCatching {
-                manager.exportToGallery("d5_cancel")
+                manager.moveToGallery("d5_cancel")
             }
             advanceUntilIdle()
 
@@ -670,28 +674,27 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
     fun GM6_removeFromGallery_deletesTheCopy_keepsTheDownload() =
         runTest {
             val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
-            val file = deps.fileStore.finishedFile("d6", "mp4").apply { writeBytes(ByteArray(100)) }
             val uri = "content://gallery/d6"
             deps.galleryExporter.existingUris.add(uri)
+            val galleryFile = File(deps.fileStore.root, "d6.mp4").apply { writeBytes(ByteArray(100)) }
+            deps.galleryExporter.uriPaths[uri] = galleryFile.absolutePath
             val item =
                 createTestDownloadItem(
                     id = "d6",
                     state = DownloadState.COMPLETED,
-                    filePath = file.absolutePath,
+                    filePath = galleryFile.absolutePath,
                 ).copy(
                     galleryState = GalleryState.SAVED,
                     galleryUri = uri,
                 )
             deps.repo.insert(item)
 
-            manager.removeFromGallery("d6")
+            manager.delete("d6")
             advanceUntilIdle()
 
             val updated = deps.repo.get("d6")
-            assertEquals(GalleryState.NONE, updated?.galleryState)
-            assertNull(updated?.galleryUri)
-            assertEquals(DownloadState.COMPLETED, updated?.state)
-            assertTrue(file.exists())
+            assertNull(updated)
+            assertFalse(galleryFile.exists())
             assertTrue(deps.galleryExporter.deleteCalls.contains(uri))
         }
 
@@ -704,6 +707,8 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
             val uri1 = "content://gallery/d7_1"
             val uri2 = "content://gallery/d7_2"
             deps.galleryExporter.existingUris.addAll(listOf(uri1, uri2))
+            deps.galleryExporter.uriPaths[uri1] = file1.absolutePath
+            deps.galleryExporter.uriPaths[uri2] = file2.absolutePath
 
             deps.repo.insert(
                 createTestDownloadItem(
@@ -837,14 +842,15 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
 
             val exportJob =
                 launch(UnconfinedTestDispatcher(testScheduler)) {
-                    manager.exportToGallery("d10")
+                    manager.moveToGallery("d10")
                 }
             advanceUntilIdle()
 
             assertTrue(deps.serviceController.ensureRunningCalled > initialEnsure)
             assertEquals(initialStops, deps.serviceController.stopCalled)
 
-            exportDeferred.complete(GalleryExportResult.Saved("content://gallery/d10"))
+            val destFile = File(deps.fileStore.root, "d10_gallery.mp4").apply { writeBytes(ByteArray(100)) }
+            exportDeferred.complete(GalleryExportResult.Saved("content://gallery/d10", destFile.absolutePath))
             advanceUntilIdle()
             exportJob.join()
 
@@ -876,8 +882,8 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
                 ).copy(galleryState = GalleryState.SAVING),
             )
 
-            manager.exportToGallery("d11_1")
-            manager.exportToGallery("d11_2")
+            manager.moveToGallery("d11_1")
+            manager.moveToGallery("d11_2")
             advanceUntilIdle()
 
             assertTrue(deps.galleryExporter.exportCalls.isEmpty())
@@ -905,7 +911,7 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
                     deferred2.await()
                 }
                 activeExports--
-                GalleryExportResult.Saved("content://gallery/$displayName")
+                GalleryExportResult.Saved("content://gallery/$displayName", "")
             }
 
             deps.downloader.handler = { task, _ ->
@@ -948,10 +954,10 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
             if (active > maxConcurrent) maxConcurrent = active
             if (displayName.contains("dA")) defA.await() else defB.await()
             active--
-            GalleryExportResult.Saved("content://gallery/$displayName")
+            GalleryExportResult.Saved("content://gallery/$displayName", "")
         }
 
-        val allJob = launch(UnconfinedTestDispatcher(testScheduler)) { manager.exportAllToGallery() }
+        val allJob = launch(UnconfinedTestDispatcher(testScheduler)) { manager.moveAllToGallery() }
         advanceUntilIdle()
         defA.complete(Unit)
         advanceUntilIdle()
@@ -981,7 +987,7 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
                 )
             deps.repo.insert(item)
 
-            manager.exportToGallery("t13")
+            manager.moveToGallery("t13")
             advanceUntilIdle()
 
             assertEquals(1, deps.galleryExporter.exportCalls.size)
@@ -991,6 +997,7 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
                     .first()
                     .file.absolutePath,
             )
+            assertFalse(torrentFolder.exists())
         }
 
     @Test
@@ -1256,6 +1263,348 @@ class DefaultDownloadManagerTest : BaseDefaultDownloadManagerTest() {
             assertEquals(downloading, deps.repo.get("dl_item"))
             assertEquals(completed, deps.repo.get("comp_item"))
             assertEquals(paused, deps.repo.get("pause_item"))
+        }
+
+    @Test
+    fun GV1_completion_withSettingOn_movesTheFile_andRepointsTheItem() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            deps.prefs.setSaveToGallery(true)
+            val exportDeferred = CompletableDeferred<GalleryExportResult>()
+            deps.galleryExporter.onExportHandler = { _, _, _, _ -> exportDeferred.await() }
+
+            deps.downloader.handler = { task, _ ->
+                task.partFile.writeBytes(ByteArray(100))
+                HttpResult.Completed(total = 100L)
+            }
+
+            val id = (manager.enqueue(testRequest(title = "Item1", videoId = "v1")) as EnqueueResult.Added).id
+            advanceUntilIdle()
+
+            val completingItem = deps.repo.get(id)
+            assertEquals(DownloadState.COMPLETED, completingItem?.state)
+            assertEquals(GalleryState.SAVING, completingItem?.galleryState)
+
+            val destFile = File(deps.fileStore.root, "dest.mp4").apply { writeBytes(ByteArray(100)) }
+            exportDeferred.complete(GalleryExportResult.Saved("content://gallery/item1", destFile.absolutePath))
+            advanceUntilIdle()
+
+            val savedItem = deps.repo.get(id)
+            assertEquals(DownloadState.COMPLETED, savedItem?.state)
+            assertEquals(GalleryState.SAVED, savedItem?.galleryState)
+            assertEquals(destFile.absolutePath, savedItem?.filePath)
+            assertEquals("content://gallery/item1", savedItem?.galleryUri)
+        }
+
+    @Test
+    fun GV2_move_deletesTheOriginal_onlyAfterThePublishedCopyIsVerified() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            val file = deps.fileStore.finishedFile("gv2", "mp4").apply { writeBytes(ByteArray(100)) }
+            val item = createTestDownloadItem(id = "gv2", state = DownloadState.COMPLETED, filePath = file.absolutePath)
+            deps.repo.insert(item)
+
+            manager.moveToGallery("gv2")
+            advanceUntilIdle()
+
+            val saved = deps.repo.get("gv2")
+            assertEquals(GalleryState.SAVED, saved?.galleryState)
+            assertFalse(file.exists())
+
+            val fileMismatch = deps.fileStore.finishedFile("gv2_bad", "mp4").apply { writeBytes(ByteArray(100)) }
+            val itemMismatch =
+                createTestDownloadItem(
+                    id = "gv2_bad",
+                    state = DownloadState.COMPLETED,
+                    filePath = fileMismatch.absolutePath,
+                )
+            deps.repo.insert(itemMismatch)
+
+            val badDest = File(deps.fileStore.root, "bad_dest.mp4").apply { writeBytes(ByteArray(50)) }
+            deps.galleryExporter.nextResult = GalleryExportResult.Saved("content://gallery/bad", badDest.absolutePath)
+
+            manager.moveToGallery("gv2_bad")
+            advanceUntilIdle()
+
+            val badItem = deps.repo.get("gv2_bad")
+            assertEquals(GalleryState.FAILED, badItem?.galleryState)
+            assertTrue(fileMismatch.exists())
+            assertTrue(deps.galleryExporter.deleteCalls.contains("content://gallery/bad"))
+        }
+
+    @Test
+    fun GV3_move_failure_keepsTheOriginal_andMarksFailed() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            val file = deps.fileStore.finishedFile("gv3", "mp4").apply { writeBytes(ByteArray(100)) }
+            val item = createTestDownloadItem(id = "gv3", state = DownloadState.COMPLETED, filePath = file.absolutePath)
+            deps.repo.insert(item)
+            deps.galleryExporter.nextResult = GalleryExportResult.Failed(GalleryFailure.WRITE_FAILED)
+
+            val effects = mutableListOf<DownloadEffect>()
+            val job = launch(UnconfinedTestDispatcher(testScheduler)) { manager.effects.collect { effects.add(it) } }
+
+            manager.moveToGallery("gv3")
+            advanceUntilIdle()
+
+            val updated = deps.repo.get("gv3")
+            assertEquals(GalleryState.FAILED, updated?.galleryState)
+            assertEquals(GalleryFailure.WRITE_FAILED, updated?.galleryFailure)
+            assertEquals(file.absolutePath, updated?.filePath)
+            assertTrue(file.exists())
+            assertTrue(effects.contains(DownloadEffect.GalleryFailed("gv3", GalleryFailure.WRITE_FAILED)))
+            job.cancel()
+        }
+
+    @Test
+    fun GV4_move_notEnoughSpace_keepsTheOriginal() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            val file = deps.fileStore.finishedFile("gv4", "mp4").apply { writeBytes(ByteArray(1024 * 1024)) }
+            val item = createTestDownloadItem(id = "gv4", state = DownloadState.COMPLETED, filePath = file.absolutePath)
+            deps.repo.insert(item)
+            deps.storageInfo.available = 100L
+
+            manager.moveToGallery("gv4")
+            advanceUntilIdle()
+
+            val updated = deps.repo.get("gv4")
+            assertEquals(GalleryState.FAILED, updated?.galleryState)
+            assertEquals(GalleryFailure.NO_SPACE, updated?.galleryFailure)
+            assertTrue(deps.galleryExporter.exportCalls.isEmpty())
+            assertTrue(file.exists())
+        }
+
+    @Test
+    fun GV5_onAppStart_dedupesEarlierCopies() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            val originalFile = deps.fileStore.finishedFile("gv5_1", "mp4").apply { writeBytes(ByteArray(100)) }
+            val copyFile = File(deps.fileStore.root.parentFile, "copy_gv5_1.mp4").apply { writeBytes(ByteArray(100)) }
+            val uri1 = "content://gallery/gv5_1"
+            deps.galleryExporter.existingUris.add(uri1)
+            deps.galleryExporter.uriPaths[uri1] = copyFile.absolutePath
+
+            val item1 =
+                createTestDownloadItem(
+                    id = "gv5_1",
+                    state = DownloadState.COMPLETED,
+                    filePath = originalFile.absolutePath,
+                ).copy(galleryState = GalleryState.SAVED, galleryUri = uri1)
+            deps.repo.insert(item1)
+
+            val uri2Gone = "content://gallery/gv5_2_gone"
+            val file2 = deps.fileStore.finishedFile("gv5_2", "mp4").apply { writeBytes(ByteArray(100)) }
+            val item2 =
+                createTestDownloadItem(
+                    id = "gv5_2",
+                    state = DownloadState.COMPLETED,
+                    filePath = file2.absolutePath,
+                ).copy(galleryState = GalleryState.SAVED, galleryUri = uri2Gone)
+            deps.repo.insert(item2)
+
+            manager.onAppStart()
+            advanceUntilIdle()
+
+            val updated1 = deps.repo.get("gv5_1")
+            assertEquals(GalleryState.SAVED, updated1?.galleryState)
+            assertEquals(copyFile.absolutePath, updated1?.filePath)
+            assertFalse(originalFile.exists())
+
+            val updated2 = deps.repo.get("gv5_2")
+            assertEquals(GalleryState.NONE, updated2?.galleryState)
+            assertNull(updated2?.galleryUri)
+        }
+
+    @Test
+    fun GV6_delete_movedItem_deletesTheGalleryFile() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            val uri = "content://gallery/gv6"
+            val galleryFile = File(deps.fileStore.root, "gv6_gal.mp4").apply { writeBytes(ByteArray(100)) }
+            deps.galleryExporter.existingUris.add(uri)
+            deps.galleryExporter.uriPaths[uri] = galleryFile.absolutePath
+
+            val item =
+                createTestDownloadItem(
+                    id = "gv6",
+                    state = DownloadState.COMPLETED,
+                    filePath = galleryFile.absolutePath,
+                ).copy(galleryState = GalleryState.SAVED, galleryUri = uri)
+            deps.repo.insert(item)
+
+            manager.delete("gv6")
+            advanceUntilIdle()
+
+            assertTrue(deps.galleryExporter.deleteCalls.contains(uri))
+            assertNull(deps.repo.get("gv6"))
+            assertFalse(galleryFile.exists())
+        }
+
+    @Test
+    fun GV7_move_torrentItem_movesTheChosenFile_andRemovesTheFolder() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            val torrentFolder = File(deps.fileStore.root, "torrents/gv7")
+            torrentFolder.mkdirs()
+            val chosenFile = File(torrentFolder, "Movie.mkv").apply { writeBytes(ByteArray(200)) }
+            File(torrentFolder, "Sample.mkv").writeBytes(ByteArray(20))
+
+            val item =
+                createTestTorrentDownloadItem(
+                    id = "gv7",
+                    state = DownloadState.COMPLETED,
+                    filePath = chosenFile.absolutePath,
+                    hash = "0123456789abcdef0123456789abcdef01234567",
+                )
+            deps.repo.insert(item)
+
+            manager.moveToGallery("gv7")
+            advanceUntilIdle()
+
+            assertEquals(1, deps.galleryExporter.exportCalls.size)
+            assertEquals(
+                chosenFile.absolutePath,
+                deps.galleryExporter.exportCalls
+                    .first()
+                    .file.absolutePath,
+            )
+            val updated = deps.repo.get("gv7")
+            assertEquals(GalleryState.SAVED, updated?.galleryState)
+            assertFalse(torrentFolder.exists())
+        }
+
+    @Test
+    fun GV8_settingOff_newDownloadsStayPrivate_existingMovedStay() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            deps.prefs.setSaveToGallery(false)
+
+            val existingUri = "content://gallery/gv8_existing"
+            val itemSaved =
+                createTestDownloadItem(
+                    id = "gv8_existing",
+                    state = DownloadState.COMPLETED,
+                    filePath = "/gallery/path",
+                ).copy(galleryState = GalleryState.SAVED, galleryUri = existingUri)
+            deps.repo.insert(itemSaved)
+
+            deps.downloader.handler = { task, _ ->
+                task.partFile.writeBytes(ByteArray(100))
+                HttpResult.Completed(total = 100L)
+            }
+
+            val newId = (manager.enqueue(testRequest(title = "NewItem", videoId = "v_new")) as EnqueueResult.Added).id
+            advanceUntilIdle()
+
+            val newItem = deps.repo.get(newId)
+            assertEquals(DownloadState.COMPLETED, newItem?.state)
+            assertEquals(GalleryState.NONE, newItem?.galleryState)
+            assertTrue(deps.fileStore.fileOf(newId)?.exists() == true)
+
+            val keptSaved = deps.repo.get("gv8_existing")
+            assertEquals(GalleryState.SAVED, keptSaved?.galleryState)
+            assertEquals(existingUri, keptSaved?.galleryUri)
+            assertEquals("/gallery/path", keptSaved?.filePath)
+        }
+
+    @Test
+    fun GV9_manualMove_forACompletedPrivateItem() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            deps.prefs.setSaveToGallery(false)
+            val file = deps.fileStore.finishedFile("gv9", "mp4").apply { writeBytes(ByteArray(100)) }
+            val item = createTestDownloadItem(id = "gv9", state = DownloadState.COMPLETED, filePath = file.absolutePath)
+            deps.repo.insert(item)
+
+            manager.moveToGallery("gv9")
+            advanceUntilIdle()
+
+            val updated = deps.repo.get("gv9")
+            assertEquals(GalleryState.SAVED, updated?.galleryState)
+            assertNotNull(updated?.galleryUri)
+            assertFalse(file.exists())
+        }
+
+    @Test
+    fun GV10_stored_savingItem_atStart_deletesThePendingRow_andKeepsTheOriginal() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            deps.prefs.setSaveToGallery(true)
+            val file = deps.fileStore.finishedFile("gv10", "mp4").apply { writeBytes(ByteArray(100)) }
+            val pendingUri = "content://gallery/gv10_pending"
+            deps.galleryExporter.existingUris.add(pendingUri)
+
+            val item =
+                createTestDownloadItem(id = "gv10", state = DownloadState.COMPLETED, filePath = file.absolutePath)
+                    .copy(galleryState = GalleryState.SAVING, galleryUri = pendingUri)
+            deps.repo.insert(item)
+
+            manager.onAppStart()
+            advanceUntilIdle()
+
+            assertTrue(deps.galleryExporter.deleteCalls.contains(pendingUri))
+            assertTrue(deps.galleryExporter.cleanupPendingCalled > 0)
+            val updated = deps.repo.get("gv10")
+            assertEquals(GalleryState.SAVED, updated?.galleryState)
+            assertFalse(file.exists())
+        }
+
+    @Test
+    fun GV11_moveWhileSavingOrSaved_isIgnored_andMovesRunOneAtATime() =
+        runTest {
+            val (manager, deps) = createManager(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            val file1 = deps.fileStore.finishedFile("gv11_1", "mp4").apply { writeBytes(ByteArray(100)) }
+            val file2 = deps.fileStore.finishedFile("gv11_2", "mp4").apply { writeBytes(ByteArray(100)) }
+            deps.repo.insert(
+                createTestDownloadItem(
+                    id = "gv11_1",
+                    state = DownloadState.COMPLETED,
+                    filePath = file1.absolutePath,
+                ).copy(galleryState = GalleryState.SAVED, galleryUri = "content://gallery/1"),
+            )
+            deps.repo.insert(
+                createTestDownloadItem(
+                    id = "gv11_2",
+                    state = DownloadState.COMPLETED,
+                    filePath = file2.absolutePath,
+                ).copy(galleryState = GalleryState.SAVING),
+            )
+
+            manager.moveToGallery("gv11_1")
+            manager.moveToGallery("gv11_2")
+            advanceUntilIdle()
+
+            assertTrue(deps.galleryExporter.exportCalls.isEmpty())
+
+            deps.prefs.setSaveToGallery(true)
+            var activeMoves = 0
+            var maxConcurrentMoves = 0
+            val defA = CompletableDeferred<Unit>()
+            val defB = CompletableDeferred<Unit>()
+            deps.galleryExporter.onExportHandler = { _, displayName, _, _ ->
+                activeMoves++
+                if (activeMoves > maxConcurrentMoves) maxConcurrentMoves = activeMoves
+                if (displayName.contains("taskA")) defA.await() else defB.await()
+                activeMoves--
+                GalleryExportResult.Saved("content://gallery/$displayName", "")
+            }
+
+            deps.downloader.handler = { task, _ ->
+                task.partFile.writeBytes(ByteArray(100))
+                HttpResult.Completed(total = 100L)
+            }
+
+            manager.enqueue(testRequest(videoId = "taskA", title = "taskA"))
+            manager.enqueue(testRequest(videoId = "taskB", title = "taskB"))
+            advanceUntilIdle()
+
+            defA.complete(Unit)
+            advanceUntilIdle()
+            defB.complete(Unit)
+            advanceUntilIdle()
+
+            assertEquals(1, maxConcurrentMoves)
         }
 
     private fun testTorrentRequest(

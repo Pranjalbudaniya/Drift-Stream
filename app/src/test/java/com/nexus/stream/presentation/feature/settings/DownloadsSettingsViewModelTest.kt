@@ -125,7 +125,7 @@ class DownloadsSettingsViewModelTest {
             viewModel.onEvent(DownloadsSettingsEvent.SetSaveToGallery(true))
 
             viewModel.onEvent(DownloadsSettingsEvent.SaveExisting)
-            assertEquals(1, downloadManager.exportAllToGalleryCalls)
+            assertEquals(1, downloadManager.moveAllToGalleryCalls)
             viewModel.uiState.test {
                 val state = awaitItem()
                 assertFalse(state.showSaveExistingOffer)
@@ -135,7 +135,7 @@ class DownloadsSettingsViewModelTest {
             // Second run with DeclineOffer
             viewModel.onEvent(DownloadsSettingsEvent.SetSaveToGallery(true))
             viewModel.onEvent(DownloadsSettingsEvent.DeclineOffer)
-            assertEquals(1, downloadManager.exportAllToGalleryCalls)
+            assertEquals(1, downloadManager.moveAllToGalleryCalls)
             viewModel.uiState.test {
                 val state = awaitItem()
                 assertFalse(state.showSaveExistingOffer)

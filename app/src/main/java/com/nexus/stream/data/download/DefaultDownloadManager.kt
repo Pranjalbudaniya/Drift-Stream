@@ -280,12 +280,13 @@ class DefaultDownloadManager(
         val item = repository.get(id)
         if (item?.galleryUri != null) {
             galleryExporter.delete(item.galleryUri)
-        }
-        if (item != null && item.kind == DownloadKind.TORRENT) {
-            val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), id)
-            torrentFolder.deleteRecursively()
         } else {
-            platform.fileStore.delete(id)
+            if (item != null && item.kind == DownloadKind.TORRENT) {
+                val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), id)
+                torrentFolder.deleteRecursively()
+            } else {
+                platform.fileStore.delete(id)
+            }
         }
         fileChoices.remove(id)
         repository.delete(id)
@@ -297,12 +298,13 @@ class DefaultDownloadManager(
         for (item in completed) {
             if (item.galleryUri != null) {
                 galleryExporter.delete(item.galleryUri)
-            }
-            if (item.kind == DownloadKind.TORRENT) {
-                val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), item.id)
-                torrentFolder.deleteRecursively()
             } else {
-                platform.fileStore.delete(item.id)
+                if (item.kind == DownloadKind.TORRENT) {
+                    val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), item.id)
+                    torrentFolder.deleteRecursively()
+                } else {
+                    platform.fileStore.delete(item.id)
+                }
             }
             fileChoices.remove(item.id)
             repository.delete(item.id)
@@ -382,6 +384,7 @@ class DefaultDownloadManager(
 
             for (item in all) {
                 if (item.galleryState == GalleryState.SAVING) {
+                    item.galleryUri?.let { galleryExporter.delete(it) }
                     repository.insert(
                         item.copy(
                             galleryState = GalleryState.NONE,
@@ -391,20 +394,10 @@ class DefaultDownloadManager(
                         ),
                     )
                     if (saveOn) {
-                        exportToGallery(item.id)
+                        moveToGallery(item.id)
                     }
                 } else if (item.galleryState == GalleryState.SAVED) {
-                    val uri = item.galleryUri
-                    if (uri == null || !galleryExporter.exists(uri)) {
-                        repository.insert(
-                            item.copy(
-                                galleryState = GalleryState.NONE,
-                                galleryUri = null,
-                                galleryFailure = null,
-                                updatedAt = now,
-                            ),
-                        )
-                    }
+                    dedupeSavedItem(item, now)
                 }
             }
             triggerScheduler()
@@ -431,14 +424,15 @@ class DefaultDownloadManager(
     override suspend fun verifyCompleted(id: String): Boolean {
         val item = repository.get(id)
         val isCompleted = item?.state == DownloadState.COMPLETED
-        val exists = isCompleted && platform.fileStore.fileOf(id)?.exists() == true
+        val file = item?.filePath?.let { File(it) } ?: platform.fileStore.fileOf(id)
+        val exists = isCompleted && file?.exists() == true
         if (isCompleted && !exists) {
             repository.updateState(id, DownloadState.FAILED, clock.now(), failure = DownloadFailure.FILE_MISSING)
         }
         return exists
     }
 
-    override suspend fun exportToGallery(id: String) {
+    override suspend fun moveToGallery(id: String) {
         val preItem = repository.get(id) ?: return
         if (preItem.galleryState == GalleryState.SAVING || preItem.galleryState == GalleryState.SAVED) return
         galleryMutex.withLock {
@@ -460,8 +454,10 @@ class DefaultDownloadManager(
             updateServiceState(repository.getAll())
 
             try {
-                runGalleryExport(item, file)
+                runGalleryMove(item, file)
             } catch (e: CancellationException) {
+                val current = repository.get(item.id)
+                current?.galleryUri?.let { galleryExporter.delete(it) }
                 repository.insert(
                     item.copy(
                         galleryState = GalleryState.NONE,
@@ -472,6 +468,8 @@ class DefaultDownloadManager(
                 )
                 throw e
             } catch (_: Exception) {
+                val current = repository.get(item.id)
+                current?.galleryUri?.let { galleryExporter.delete(it) }
                 repository.insert(
                     item.copy(
                         galleryState = GalleryState.FAILED,
@@ -488,7 +486,18 @@ class DefaultDownloadManager(
         }
     }
 
-    private suspend fun resolveExportFile(item: DownloadItem): File? {
+    override suspend fun moveAllToGallery() {
+        val completed =
+            repository.getAll().filter {
+                it.state == DownloadState.COMPLETED &&
+                    (it.galleryState == GalleryState.NONE || it.galleryState == GalleryState.FAILED)
+            }
+        for (item in completed) {
+            moveToGallery(item.id)
+        }
+    }
+
+    internal suspend fun resolveExportFile(item: DownloadItem): File? {
         val file =
             if (item.kind == DownloadKind.TORRENT) {
                 item.filePath?.let { File(it) }
@@ -510,7 +519,7 @@ class DefaultDownloadManager(
         return file
     }
 
-    private suspend fun checkExportStorage(
+    internal suspend fun checkExportStorage(
         item: DownloadItem,
         file: File,
     ): Boolean {
@@ -529,79 +538,6 @@ class DefaultDownloadManager(
             return false
         }
         return true
-    }
-
-    private suspend fun runGalleryExport(
-        item: DownloadItem,
-        file: File,
-    ) {
-        val fileName =
-            galleryFileName(
-                title = item.title,
-                metaName = item.metaName,
-                season = item.season,
-                episode = item.episode,
-                extension = file.extension,
-            )
-        val mimeType = galleryMimeType(file.extension)
-        val result =
-            galleryExporter.export(file, fileName, mimeType) { copied, _ ->
-                updateLive { current ->
-                    val cur = current[item.id] ?: DownloadLive()
-                    current + (item.id to cur.copy(copiedBytes = copied))
-                }
-            }
-        when (result) {
-            is GalleryExportResult.Saved -> {
-                repository.insert(
-                    item.copy(
-                        galleryState = GalleryState.SAVED,
-                        galleryUri = result.uri,
-                        galleryFailure = null,
-                        updatedAt = clock.now(),
-                    ),
-                )
-            }
-
-            is GalleryExportResult.Failed -> {
-                repository.insert(
-                    item.copy(
-                        galleryState = GalleryState.FAILED,
-                        galleryUri = null,
-                        galleryFailure = result.failure,
-                        updatedAt = clock.now(),
-                    ),
-                )
-                emitEffect(DownloadEffect.GalleryFailed(item.id, result.failure))
-            }
-        }
-    }
-
-    override suspend fun removeFromGallery(id: String) {
-        val item = repository.get(id) ?: return
-        val uri = item.galleryUri
-        if (uri != null) {
-            galleryExporter.delete(uri)
-        }
-        repository.insert(
-            item.copy(
-                galleryState = GalleryState.NONE,
-                galleryUri = null,
-                galleryFailure = null,
-                updatedAt = clock.now(),
-            ),
-        )
-    }
-
-    override suspend fun exportAllToGallery() {
-        val completed =
-            repository.getAll().filter {
-                it.state == DownloadState.COMPLETED &&
-                    (it.galleryState == GalleryState.NONE || it.galleryState == GalleryState.FAILED)
-            }
-        for (item in completed) {
-            exportToGallery(item.id)
-        }
     }
 
     internal fun triggerScheduler() {
@@ -716,12 +652,7 @@ internal suspend fun DefaultDownloadManager.reconcileAtStart() {
             }
 
             DownloadState.COMPLETED -> {
-                val file =
-                    if (item.kind == DownloadKind.TORRENT) {
-                        item.filePath?.let { File(it) }
-                    } else {
-                        platform.fileStore.fileOf(item.id)
-                    }
+                val file = item.filePath?.let { File(it) } ?: platform.fileStore.fileOf(item.id)
                 if (file == null || !file.exists()) {
                     repository.updateState(item.id, DownloadState.FAILED, now, failure = DownloadFailure.FILE_MISSING)
                 }
@@ -846,4 +777,52 @@ private fun createEnqueuedItem(
         createdAt = now,
         updatedAt = now,
     )
+}
+
+private suspend fun DefaultDownloadManager.dedupeSavedItem(
+    item: DownloadItem,
+    now: Long,
+) {
+    val uri = item.galleryUri
+    val copyPath = if (uri != null && galleryExporter.exists(uri)) galleryExporter.resolvePath(uri) else null
+    val copyFile = copyPath?.let { File(it) }
+    if (copyFile == null || !copyFile.exists()) {
+        repository.insert(
+            item.copy(
+                galleryState = GalleryState.NONE,
+                galleryUri = null,
+                galleryFailure = null,
+                updatedAt = now,
+            ),
+        )
+        return
+    }
+
+    val originalFile =
+        if (item.kind == DownloadKind.TORRENT) {
+            val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), item.id)
+            if (torrentFolder.exists()) item.filePath?.let { File(it) } else null
+        } else {
+            platform.fileStore.fileOf(item.id)
+        }
+
+    val isEarlierCopy =
+        originalFile?.exists() == true &&
+            copyFile.length() == originalFile.length() &&
+            copyFile.canonicalPath != originalFile.canonicalPath
+
+    if (isEarlierCopy) {
+        repository.insert(
+            item.copy(
+                filePath = copyFile.absolutePath,
+                updatedAt = now,
+            ),
+        )
+        if (item.kind == DownloadKind.TORRENT) {
+            val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), item.id)
+            torrentFolder.deleteRecursively()
+        } else {
+            originalFile.delete()
+        }
+    }
 }

@@ -510,6 +510,174 @@ class TorrentDownloaderTest {
             assertTrue(caughtCancellation)
             assertEquals(1, fakeBackend.removeKeepingFilesCalls)
         }
+
+    @Test
+    fun TD15_awaitMetadataThrowsTheEngineFailure_failsTorrentEngine_notAnException() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            fakeBackend.throwExceptionOnAwaitMetadata = TorrentBackendException(TorrentFailReason.STORAGE)
+            val downloader =
+                TorrentDownloaderImpl(
+                    backend = fakeBackend,
+                    storageInfo = fakeStorage,
+                    fileStore = fakeFileStore,
+                    ioDispatcher = testDispatcher,
+                    nowMs = { testScheduler.currentTime },
+                    delayFn = { kotlinx.coroutines.delay(it) },
+                )
+            val saveDir = File(rootDir, "torrents/item1")
+            val task = TorrentTask(infoHash = "0123456789abcdef0123456789abcdef01234567", saveDir = saveDir)
+
+            val result = downloader.download(task) {}
+
+            assertEquals(TorrentResult.Failed(DownloadFailure.TORRENT_ENGINE), result)
+            assertEquals(1, fakeBackend.removeKeepingFilesCalls)
+        }
+
+    @Test
+    fun TD16_awaitMetadataThrowsRuntimeException_failsTorrentEngine() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            fakeBackend.throwExceptionOnAwaitMetadata = IllegalStateException("Something broke")
+            val downloader =
+                TorrentDownloaderImpl(
+                    backend = fakeBackend,
+                    storageInfo = fakeStorage,
+                    fileStore = fakeFileStore,
+                    ioDispatcher = testDispatcher,
+                    nowMs = { testScheduler.currentTime },
+                    delayFn = { kotlinx.coroutines.delay(it) },
+                )
+            val saveDir = File(rootDir, "torrents/item1")
+            val task = TorrentTask(infoHash = "0123456789abcdef0123456789abcdef01234567", saveDir = saveDir)
+
+            val result = downloader.download(task) {}
+
+            assertEquals(TorrentResult.Failed(DownloadFailure.TORRENT_ENGINE), result)
+            assertEquals(1, fakeBackend.removeKeepingFilesCalls)
+        }
+
+    @Test
+    fun TD17_backendThrowsLinkageError_failsTorrentEngine() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            fakeBackend.throwExceptionOnAdd = UnsatisfiedLinkError("Native library missing")
+            val downloader =
+                TorrentDownloaderImpl(
+                    backend = fakeBackend,
+                    storageInfo = fakeStorage,
+                    fileStore = fakeFileStore,
+                    ioDispatcher = testDispatcher,
+                    nowMs = { testScheduler.currentTime },
+                    delayFn = { kotlinx.coroutines.delay(it) },
+                )
+            val saveDir = File(rootDir, "torrents/item1")
+            val task = TorrentTask(infoHash = "0123456789abcdef0123456789abcdef01234567", saveDir = saveDir)
+
+            val result = downloader.download(task) {}
+
+            assertEquals(TorrentResult.Failed(DownloadFailure.TORRENT_ENGINE), result)
+            assertEquals(1, fakeBackend.removeKeepingFilesCalls)
+        }
+
+    @Test
+    fun TD18_metadataAlreadyAvailable_isUsedWithoutWaiting() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            fakeBackend.onAddMetadataToProvide =
+                TorrentMetadata(
+                    files = listOf(BackendFile(0, "movie.mkv", 1024L * 1024 * 1024, 0L)),
+                    pieceLength = 1024L * 1024,
+                )
+            fakeBackend.snapshotsToReturn =
+                listOf(
+                    DownloadSnapshot(1024L * 1024 * 1024, 1024L * 1024 * 1024, 1000L, 5, TorrentSessionState.FINISHED),
+                )
+            val downloader =
+                TorrentDownloaderImpl(
+                    backend = fakeBackend,
+                    storageInfo = fakeStorage,
+                    fileStore = fakeFileStore,
+                    ioDispatcher = testDispatcher,
+                    nowMs = { testScheduler.currentTime },
+                    delayFn = { kotlinx.coroutines.delay(it) },
+                )
+            val saveDir = File(rootDir, "torrents/item1")
+            val task = TorrentTask(infoHash = "0123456789abcdef0123456789abcdef01234567", saveDir = saveDir)
+
+            val result = downloader.download(task) {}
+
+            assertTrue(result is TorrentResult.Completed)
+            assertEquals(1, fakeBackend.selectedFiles.size)
+            assertEquals(0, fakeBackend.selectedFiles.first())
+        }
+
+    @Test
+    fun TD19_failureAfterAdd_alwaysRemovesTheTorrentKeepingFiles() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            fakeBackend.metadataToReturn =
+                TorrentMetadata(
+                    files = listOf(BackendFile(0, "movie.mkv", 1024L * 1024 * 1024, 0L)),
+                    pieceLength = 1024L * 1024,
+                )
+            fakeBackend.throwExceptionOnSelectFile = TorrentBackendException(TorrentFailReason.STORAGE)
+            val downloader =
+                TorrentDownloaderImpl(
+                    backend = fakeBackend,
+                    storageInfo = fakeStorage,
+                    fileStore = fakeFileStore,
+                    ioDispatcher = testDispatcher,
+                    nowMs = { testScheduler.currentTime },
+                    delayFn = { kotlinx.coroutines.delay(it) },
+                )
+            val saveDir = File(rootDir, "torrents/item1")
+            val task = TorrentTask(infoHash = "0123456789abcdef0123456789abcdef01234567", saveDir = saveDir)
+
+            val result = downloader.download(task) {}
+
+            assertEquals(TorrentResult.Failed(DownloadFailure.TORRENT_ENGINE), result)
+            assertEquals(1, fakeBackend.removeKeepingFilesCalls)
+        }
+
+    @Test
+    fun TD20_retryAfterFailure_addsAgainCleanly() =
+        runTest {
+            val testDispatcher = StandardTestDispatcher(testScheduler)
+            fakeBackend.metadataToReturn =
+                TorrentMetadata(
+                    files = listOf(BackendFile(0, "movie.mkv", 1024L * 1024 * 1024, 0L)),
+                    pieceLength = 1024L * 1024,
+                )
+            fakeBackend.snapshotsToReturn =
+                listOf(
+                    DownloadSnapshot(1024L * 1024 * 1024, 1024L * 1024 * 1024, 1000L, 5, TorrentSessionState.FINISHED),
+                )
+            fakeBackend.throwExceptionOnSelectFile = TorrentBackendException(TorrentFailReason.STORAGE)
+
+            val downloader =
+                TorrentDownloaderImpl(
+                    backend = fakeBackend,
+                    storageInfo = fakeStorage,
+                    fileStore = fakeFileStore,
+                    ioDispatcher = testDispatcher,
+                    nowMs = { testScheduler.currentTime },
+                    delayFn = { kotlinx.coroutines.delay(it) },
+                )
+            val saveDir = File(rootDir, "torrents/item1")
+            val task = TorrentTask(infoHash = "0123456789abcdef0123456789abcdef01234567", saveDir = saveDir)
+
+            val firstResult = downloader.download(task) {}
+            assertEquals(TorrentResult.Failed(DownloadFailure.TORRENT_ENGINE), firstResult)
+            assertEquals(1, fakeBackend.removeKeepingFilesCalls)
+
+            // Second try without exception
+            fakeBackend.throwExceptionOnSelectFile = null
+            val secondResult = downloader.download(task) {}
+
+            assertTrue(secondResult is TorrentResult.Completed)
+            assertEquals(2, fakeBackend.addCalls.size)
+        }
 }
 
 class FakeTorrentDownloadBackend : TorrentDownloadBackend {
@@ -526,12 +694,15 @@ class FakeTorrentDownloadBackend : TorrentDownloadBackend {
 
     val activeInStreamingHashes = mutableSetOf<String>()
     var metadataToReturn: TorrentMetadata? = null
+    var onAddMetadataToProvide: TorrentMetadata? = null
     var neverEmitMetadata: Boolean = false
     var snapshotsToReturn = listOf<DownloadSnapshot>()
     private var snapshotIdx = 0
     var pauseAfterSnapshots: Int? = null
     var shouldPauseNow: Boolean = false
-    var throwExceptionOnAdd: TorrentBackendException? = null
+    var throwExceptionOnAdd: Throwable? = null
+    var throwExceptionOnAwaitMetadata: Throwable? = null
+    var throwExceptionOnSelectFile: Throwable? = null
 
     override suspend fun addForDownload(
         infoHash: String,
@@ -540,9 +711,11 @@ class FakeTorrentDownloadBackend : TorrentDownloadBackend {
     ) {
         throwExceptionOnAdd?.let { throw it }
         addCalls.add(AddCall(infoHash, magnetUri, saveDir))
+        onAddMetadataToProvide?.let { metadataToReturn = it }
     }
 
     override suspend fun awaitMetadata(infoHash: String): TorrentMetadata {
+        throwExceptionOnAwaitMetadata?.let { throw it }
         if (neverEmitMetadata) {
             kotlinx.coroutines.awaitCancellation()
         }
@@ -553,6 +726,7 @@ class FakeTorrentDownloadBackend : TorrentDownloadBackend {
         infoHash: String,
         fileIndex: Int,
     ) {
+        throwExceptionOnSelectFile?.let { throw it }
         selectedFiles.add(fileIndex)
     }
 

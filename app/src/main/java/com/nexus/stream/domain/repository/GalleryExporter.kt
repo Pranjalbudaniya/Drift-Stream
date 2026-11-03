@@ -6,6 +6,7 @@ import java.io.File
 sealed interface GalleryExportResult {
     data class Saved(
         val uri: String,
+        val filePath: String,
     ) : GalleryExportResult
 
     data class Failed(
@@ -19,9 +20,12 @@ interface GalleryExporter {
         displayName: String,
         mimeType: String,
         onProgress: (copiedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> },
+        onRowCreated: (suspend (uri: String) -> Unit)? = null,
     ): GalleryExportResult
 
     suspend fun exists(uri: String): Boolean
+
+    suspend fun resolvePath(uri: String): String?
 
     suspend fun delete(uri: String): Boolean
 

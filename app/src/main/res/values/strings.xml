@@ -242,24 +242,22 @@
     <string name="downloads_pause_all_desc">Pause all downloads</string>
     <string name="downloads_resume_all_desc">Resume all downloads</string>
     <string name="downloads_more_desc">More options</string>
-    <string name="downloads_menu_save_gallery">Save to Gallery</string>
-    <string name="downloads_menu_remove_gallery">Remove from Gallery</string>
-    <string name="downloads_menu_retry_gallery">Try saving again</string>
+    <string name="downloads_menu_move_gallery">Move to Gallery</string>
+    <string name="downloads_menu_retry_move_gallery">Try moving again</string>
     <string name="downloads_status_in_gallery">%1$s · In Gallery</string>
-    <string name="downloads_status_saving_gallery">Saving to Gallery... %1$d%%</string>
-    <string name="downloads_gallery_failed">Couldn\'t save to Gallery: %1$s</string>
+    <string name="downloads_status_saving_gallery">Moving to Gallery... %1$d%%</string>
+    <string name="downloads_gallery_failed">Couldn\'t move to Gallery: %1$s</string>
     <string name="downloads_gallery_reason_space">not enough space</string>
     <string name="downloads_gallery_reason_write">couldn\'t write the file</string>
     <string name="downloads_gallery_reason_missing">the file is missing</string>
     <string name="downloads_gallery_reason_unavailable">Gallery isn\'t available</string>
-    <string name="downloads_confirm_gallery_note">Its copy in Gallery is removed too.</string>
-    <string name="download_notif_saving_gallery">Saving to Gallery</string>
-    <string name="downloads_setting_gallery">Save downloads to Gallery</string>
-    <string name="downloads_setting_gallery_caption">Copies finished downloads to Movies/Nexus Stream so Gallery and other apps can see them. Uses extra storage, and other apps can read these files.</string>
-    <string name="downloads_gallery_offer_title">Save your existing downloads too?</string>
-    <string name="downloads_gallery_offer_all">Save all</string>
+    <string name="download_notif_saving_gallery">Moving to Gallery</string>
+    <string name="downloads_setting_gallery">Keep downloads in Gallery</string>
+    <string name="downloads_setting_gallery_caption">Finished downloads are moved to Movies/Nexus Stream so Gallery and other apps can see them. If you delete them in the Gallery app they disappear from Downloads too.</string>
+    <string name="downloads_gallery_offer_title">Move your existing downloads too?</string>
+    <string name="downloads_gallery_offer_all">Move all</string>
     <string name="downloads_gallery_offer_new">Only new</string>
-    <string name="downloads_setting_gallery_existing">Save existing downloads now (%1$d)</string>
+    <string name="downloads_setting_gallery_existing">Move existing downloads now (%1$d)</string>
     <string name="downloads_delete_all">Delete all downloaded</string>
     <string name="downloads_section_in_progress">In progress</string>
     <string name="downloads_section_problems">Problems</string>
@@ -919,5 +917,9 @@
     <string name="download_failure_incomplete">The download didn\'t finish</string>
     <string name="download_failure_no_peers">No peers found</string>
     <string name="download_failure_torrent_in_use">This torrent is playing right now. Try again later.</string>
+    <string name="download_failure_torrent_engine">The torrent engine couldn\'t start this download</string>
+    <string name="downloads_failed_with_code">%1$s · %2$s</string>
+    <string name="downloads_menu_find_source">Find a different source</string>
+    <string name="download_source_replaced">Source replaced. Download starting.</string>
 </resources>
 

@@ -4,19 +4,27 @@ import com.nexus.stream.data.torrent.NetworkStatus
 import com.nexus.stream.domain.model.DownloadEffect
 import com.nexus.stream.domain.model.DownloadFailure
 import com.nexus.stream.domain.model.DownloadItem
+import com.nexus.stream.domain.model.DownloadKind
 import com.nexus.stream.domain.model.DownloadLive
 import com.nexus.stream.domain.model.DownloadSource
 import com.nexus.stream.domain.model.DownloadState
+import com.nexus.stream.domain.model.GalleryFailure
+import com.nexus.stream.domain.model.GalleryState
 import com.nexus.stream.domain.model.PauseReason
+import com.nexus.stream.domain.repository.GalleryExportResult
 import com.nexus.stream.domain.repository.HttpResult
 import com.nexus.stream.domain.repository.HttpTask
 import com.nexus.stream.domain.repository.TorrentResult
 import com.nexus.stream.domain.repository.TorrentTask
 import com.nexus.stream.domain.repository.TorrentUpdate
 import com.nexus.stream.domain.usecase.SpeedMeter
+import com.nexus.stream.domain.usecase.TORRENT_SUBDIR
 import com.nexus.stream.domain.usecase.downloadFileExtension
 import com.nexus.stream.domain.usecase.etaSeconds
+import com.nexus.stream.domain.usecase.galleryFileName
+import com.nexus.stream.domain.usecase.galleryMimeType
 import com.nexus.stream.domain.usecase.hasEnoughStorage
+import com.nexus.stream.domain.usecase.hasEnoughStorageForExport
 import com.nexus.stream.domain.usecase.torrentSaveDir
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -80,8 +88,9 @@ private suspend fun DefaultDownloadManager.executeHttpDownload(
         handleHttpResult(item, result, httpSource.url)
     } catch (e: CancellationException) {
         throw e
-    } catch (_: Exception) {
+    } catch (expected: Throwable) {
         repository.updateState(item.id, DownloadState.FAILED, clock.now(), failure = DownloadFailure.UNKNOWN)
+        emitEffect(DownloadEffect.Failed(item.id, DownloadFailure.UNKNOWN))
     } finally {
         session?.close()
     }
@@ -114,9 +123,9 @@ private suspend fun DefaultDownloadManager.executeTorrentDownload(
         handleTorrentResult(item, result, saveDir)
     } catch (e: CancellationException) {
         throw e
-    } catch (_: Exception) {
-        repository.updateState(item.id, DownloadState.FAILED, clock.now(), failure = DownloadFailure.UNKNOWN)
-        emitEffect(DownloadEffect.Failed(item.id, DownloadFailure.UNKNOWN))
+    } catch (expected: Throwable) {
+        repository.updateState(item.id, DownloadState.FAILED, clock.now(), failure = DownloadFailure.TORRENT_ENGINE)
+        emitEffect(DownloadEffect.Failed(item.id, DownloadFailure.TORRENT_ENGINE))
     }
 }
 
@@ -173,7 +182,7 @@ private suspend fun DefaultDownloadManager.handleTorrentResult(
             emitEffect(DownloadEffect.Completed(item.id))
             if (prefsRepository.saveToGallery.first()) {
                 scope.launch(ioDispatcher) {
-                    exportToGallery(item.id)
+                    moveToGallery(item.id)
                 }
             }
         }
@@ -232,7 +241,7 @@ private suspend fun DefaultDownloadManager.handleDownloadCompleted(
     emitEffect(DownloadEffect.Completed(item.id))
     if (prefsRepository.saveToGallery.first()) {
         scope.launch(ioDispatcher) {
-            exportToGallery(item.id)
+            moveToGallery(item.id)
         }
     }
 }
@@ -281,6 +290,100 @@ private fun DefaultDownloadManager.onProgressUpdate(
         lastPersistBytes[id] = bytes
         scope.launch(ioDispatcher) {
             repository.updateProgress(id, bytes, total, DownloadState.DOWNLOADING, now)
+        }
+    }
+}
+
+internal suspend fun DefaultDownloadManager.runGalleryMove(
+    item: DownloadItem,
+    file: File,
+) {
+    val fileName =
+        galleryFileName(
+            title = item.title,
+            metaName = item.metaName,
+            season = item.season,
+            episode = item.episode,
+            extension = file.extension,
+        )
+    val mimeType = galleryMimeType(file.extension)
+    val originalSize = file.length()
+    var pendingUri: String? = null
+
+    val result =
+        galleryExporter.export(
+            file = file,
+            displayName = fileName,
+            mimeType = mimeType,
+            onProgress = { copied, _ ->
+                updateLive { current ->
+                    val cur = current[item.id] ?: DownloadLive()
+                    current + (item.id to cur.copy(copiedBytes = copied))
+                }
+            },
+            onRowCreated = { uri ->
+                pendingUri = uri
+                val current = repository.get(item.id)
+                if (current != null) {
+                    repository.insert(current.copy(galleryUri = uri, updatedAt = clock.now()))
+                }
+            },
+        )
+
+    applyMoveResult(item, file, originalSize, pendingUri, result)
+}
+
+private suspend fun DefaultDownloadManager.applyMoveResult(
+    item: DownloadItem,
+    file: File,
+    originalSize: Long,
+    pendingUri: String?,
+    result: GalleryExportResult,
+) {
+    when (result) {
+        is GalleryExportResult.Saved -> {
+            val publishedFile = File(result.filePath)
+            if (publishedFile.exists() && publishedFile.length() == originalSize) {
+                repository.insert(
+                    item.copy(
+                        filePath = result.filePath,
+                        galleryUri = result.uri,
+                        galleryState = GalleryState.SAVED,
+                        galleryFailure = null,
+                        updatedAt = clock.now(),
+                    ),
+                )
+                if (item.kind == DownloadKind.TORRENT) {
+                    val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), item.id)
+                    torrentFolder.deleteRecursively()
+                } else {
+                    file.delete()
+                }
+            } else {
+                galleryExporter.delete(result.uri)
+                repository.insert(
+                    item.copy(
+                        galleryState = GalleryState.FAILED,
+                        galleryUri = null,
+                        galleryFailure = GalleryFailure.WRITE_FAILED,
+                        updatedAt = clock.now(),
+                    ),
+                )
+                emitEffect(DownloadEffect.GalleryFailed(item.id, GalleryFailure.WRITE_FAILED))
+            }
+        }
+
+        is GalleryExportResult.Failed -> {
+            pendingUri?.let { galleryExporter.delete(it) }
+            repository.insert(
+                item.copy(
+                    galleryState = GalleryState.FAILED,
+                    galleryUri = null,
+                    galleryFailure = result.failure,
+                    updatedAt = clock.now(),
+                ),
+            )
+            emitEffect(DownloadEffect.GalleryFailed(item.id, result.failure))
         }
     }
 }

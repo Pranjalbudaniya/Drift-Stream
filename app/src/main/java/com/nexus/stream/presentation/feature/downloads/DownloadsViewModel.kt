@@ -133,6 +133,10 @@ sealed interface DownloadsEvent {
         val item: DownloadItem,
     ) : DownloadsEvent
 
+    data class FindDifferentSource(
+        val item: DownloadItem,
+    ) : DownloadsEvent
+
     data object DismissNotificationsBanner : DownloadsEvent
 
     data object PauseAll : DownloadsEvent
@@ -150,11 +154,7 @@ sealed interface DownloadsEvent {
 
     data object DismissPick : DownloadsEvent
 
-    data class SaveToGallery(
-        val id: String,
-    ) : DownloadsEvent
-
-    data class RemoveFromGallery(
+    data class MoveToGallery(
         val id: String,
     ) : DownloadsEvent
 
@@ -341,13 +341,8 @@ class DownloadsViewModel(
                 true
             }
 
-            is DownloadsEvent.SaveToGallery -> {
-                viewModelScope.launch { downloadManager.exportToGallery(event.id) }
-                true
-            }
-
-            is DownloadsEvent.RemoveFromGallery -> {
-                viewModelScope.launch { downloadManager.removeFromGallery(event.id) }
+            is DownloadsEvent.MoveToGallery -> {
+                viewModelScope.launch { downloadManager.moveToGallery(event.id) }
                 true
             }
 
@@ -378,6 +373,10 @@ class DownloadsViewModel(
             }
 
             is DownloadsEvent.FindNewLink -> {
+                handleFindNewLink(event.item)
+            }
+
+            is DownloadsEvent.FindDifferentSource -> {
                 handleFindNewLink(event.item)
             }
 

@@ -117,7 +117,9 @@ fun formatStatusText(status: StatusText): String {
                 }
 
                 is Int -> {
-                    if (status.stringRes == R.string.downloads_gallery_failed) {
+                    if (status.stringRes == R.string.downloads_gallery_failed ||
+                        status.stringRes == R.string.downloads_failed_with_code
+                    ) {
                         stringResource(arg)
                     } else {
                         arg
@@ -355,8 +357,8 @@ fun DownloadRow(
     onRequestDelete: (String) -> Unit,
     modifier: Modifier = Modifier,
     onChooseFile: (String) -> Unit = {},
-    onSaveToGallery: (String) -> Unit = {},
-    onRemoveFromGallery: (String) -> Unit = {},
+    onMoveToGallery: (String) -> Unit = {},
+    onFindDifferentSource: (DownloadItem) -> Unit = {},
 ) {
     val context = LocalContext.current
     val spacing = NexusTheme.spacing
@@ -419,8 +421,8 @@ fun DownloadRow(
             onRequestCancel = onRequestCancel,
             onRequestDelete = onRequestDelete,
             onChooseFile = onChooseFile,
-            onSaveToGallery = onSaveToGallery,
-            onRemoveFromGallery = onRemoveFromGallery,
+            onMoveToGallery = onMoveToGallery,
+            onFindDifferentSource = onFindDifferentSource,
         )
     }
 }
@@ -517,8 +519,8 @@ private object DownloadRowActionsContent {
         item: DownloadItem,
         onRequestCancel: (String) -> Unit,
         onRequestDelete: (String) -> Unit,
-        onSaveToGallery: (String) -> Unit,
-        onRemoveFromGallery: (String) -> Unit,
+        onMoveToGallery: (String) -> Unit,
+        onFindDifferentSource: (DownloadItem) -> Unit = {},
     ) {
         var menuExpanded by remember { mutableStateOf(false) }
         Box {
@@ -536,32 +538,22 @@ private object DownloadRowActionsContent {
             ) {
                 rowMenu(item).forEach { menuItem ->
                     when (menuItem) {
-                        RowMenuItem.SAVE_TO_GALLERY -> {
+                        RowMenuItem.MOVE_TO_GALLERY -> {
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.downloads_menu_save_gallery)) },
+                                text = { Text(stringResource(R.string.downloads_menu_move_gallery)) },
                                 onClick = {
                                     menuExpanded = false
-                                    onSaveToGallery(item.id)
+                                    onMoveToGallery(item.id)
                                 },
                             )
                         }
 
-                        RowMenuItem.REMOVE_FROM_GALLERY -> {
+                        RowMenuItem.RETRY_MOVE -> {
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.downloads_menu_remove_gallery)) },
+                                text = { Text(stringResource(R.string.downloads_menu_retry_move_gallery)) },
                                 onClick = {
                                     menuExpanded = false
-                                    onRemoveFromGallery(item.id)
-                                },
-                            )
-                        }
-
-                        RowMenuItem.RETRY_GALLERY -> {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.downloads_menu_retry_gallery)) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onSaveToGallery(item.id)
+                                    onMoveToGallery(item.id)
                                 },
                             )
                         }
@@ -582,6 +574,16 @@ private object DownloadRowActionsContent {
                                 onClick = {
                                     menuExpanded = false
                                     onRequestCancel(item.id)
+                                },
+                            )
+                        }
+
+                        RowMenuItem.FIND_DIFFERENT_SOURCE -> {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.downloads_menu_find_source)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onFindDifferentSource(item)
                                 },
                             )
                         }
@@ -612,8 +614,8 @@ fun DownloadRowActions(
     onRequestCancel: (String) -> Unit,
     onRequestDelete: (String) -> Unit,
     onChooseFile: (String) -> Unit,
-    onSaveToGallery: (String) -> Unit,
-    onRemoveFromGallery: (String) -> Unit,
+    onMoveToGallery: (String) -> Unit,
+    onFindDifferentSource: (DownloadItem) -> Unit = {},
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -632,8 +634,8 @@ fun DownloadRowActions(
             item = item,
             onRequestCancel = onRequestCancel,
             onRequestDelete = onRequestDelete,
-            onSaveToGallery = onSaveToGallery,
-            onRemoveFromGallery = onRemoveFromGallery,
+            onMoveToGallery = onMoveToGallery,
+            onFindDifferentSource = onFindDifferentSource,
         )
     }
 }
@@ -665,9 +667,7 @@ fun ConfirmDeleteDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val body =
-        stringResource(R.string.downloads_confirm_delete_body) + " " +
-            stringResource(R.string.downloads_confirm_gallery_note)
+    val body = stringResource(R.string.downloads_confirm_delete_body)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.downloads_confirm_delete_title)) },
@@ -690,9 +690,7 @@ fun ConfirmDeleteAllDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val body =
-        stringResource(R.string.downloads_confirm_delete_all_body) + " " +
-            stringResource(R.string.downloads_confirm_gallery_note)
+    val body = stringResource(R.string.downloads_confirm_delete_all_body)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.downloads_confirm_delete_all_title)) },

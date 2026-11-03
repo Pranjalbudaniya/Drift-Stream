@@ -107,7 +107,7 @@ class DownloadsSettingsViewModel
 
                     DownloadsSettingsEvent.SaveExisting -> {
                         showOfferFlow.value = false
-                        downloadManager.exportAllToGallery()
+                        downloadManager.moveAllToGallery()
                     }
 
                     DownloadsSettingsEvent.DeclineOffer -> {

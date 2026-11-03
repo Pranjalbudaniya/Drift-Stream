@@ -106,8 +106,9 @@ fun failureReasonRes(failure: DownloadFailure): Int =
 
         DownloadFailure.TORRENT_IN_USE -> R.string.download_failure_torrent_in_use
 
+        DownloadFailure.TORRENT_ENGINE -> R.string.download_failure_torrent_engine
+
         DownloadFailure.UNSUPPORTED_SOURCE,
-        DownloadFailure.TORRENT_ENGINE,
         DownloadFailure.UNKNOWN,
         -> R.string.download_failure_unknown
     }

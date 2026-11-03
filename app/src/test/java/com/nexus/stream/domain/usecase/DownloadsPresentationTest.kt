@@ -515,18 +515,60 @@ class DownloadsPresentationTest {
     @Test
     fun DP34_rowMenu_perState() {
         val completedNone = createItem(state = DownloadState.COMPLETED).copy(galleryState = GalleryState.NONE)
-        assertEquals(listOf(RowMenuItem.SAVE_TO_GALLERY, RowMenuItem.DELETE), rowMenu(completedNone))
+        assertEquals(listOf(RowMenuItem.MOVE_TO_GALLERY, RowMenuItem.DELETE), rowMenu(completedNone))
 
         val completedSaved = createItem(state = DownloadState.COMPLETED).copy(galleryState = GalleryState.SAVED)
-        assertEquals(listOf(RowMenuItem.REMOVE_FROM_GALLERY, RowMenuItem.DELETE), rowMenu(completedSaved))
+        assertEquals(listOf(RowMenuItem.DELETE), rowMenu(completedSaved))
 
         val completedFailed = createItem(state = DownloadState.COMPLETED).copy(galleryState = GalleryState.FAILED)
-        assertEquals(listOf(RowMenuItem.RETRY_GALLERY, RowMenuItem.DELETE), rowMenu(completedFailed))
+        assertEquals(listOf(RowMenuItem.RETRY_MOVE, RowMenuItem.DELETE), rowMenu(completedFailed))
 
         val downloading = createItem(state = DownloadState.DOWNLOADING)
         assertEquals(listOf(RowMenuItem.CANCEL), rowMenu(downloading))
 
         val failed = createItem(state = DownloadState.FAILED)
-        assertEquals(listOf(RowMenuItem.REMOVE), rowMenu(failed))
+        assertEquals(listOf(RowMenuItem.FIND_DIFFERENT_SOURCE, RowMenuItem.REMOVE), rowMenu(failed))
+    }
+
+    @Test
+    fun DP35_menu_failedItem_hasFindDifferentSource_forEveryFailure() {
+        for (failure in DownloadFailure.entries) {
+            val item = createItem(state = DownloadState.FAILED).copy(failure = failure)
+            assertEquals(
+                listOf(RowMenuItem.FIND_DIFFERENT_SOURCE, RowMenuItem.REMOVE),
+                rowMenu(item),
+            )
+        }
+    }
+
+    @Test
+    fun DP36_menu_completedPrivate_hasMoveToGallery() {
+        val item = createItem(state = DownloadState.COMPLETED).copy(galleryState = GalleryState.NONE)
+        assertEquals(listOf(RowMenuItem.MOVE_TO_GALLERY, RowMenuItem.DELETE), rowMenu(item))
+    }
+
+    @Test
+    fun DP37_menu_completedInGallery_hasNoGalleryAction() {
+        val item = createItem(state = DownloadState.COMPLETED).copy(galleryState = GalleryState.SAVED)
+        assertEquals(listOf(RowMenuItem.DELETE), rowMenu(item))
+    }
+
+    @Test
+    fun DP38_menu_galleryFailed_hasTryMovingAgain() {
+        val item = createItem(state = DownloadState.COMPLETED).copy(galleryState = GalleryState.FAILED)
+        assertEquals(listOf(RowMenuItem.RETRY_MOVE, RowMenuItem.DELETE), rowMenu(item))
+    }
+
+    @Test
+    fun DP39_status_failedRow_showsTheReasonAndTheCode() {
+        val torrentEngineItem = createItem(state = DownloadState.FAILED).copy(failure = DownloadFailure.TORRENT_ENGINE)
+        val torrentEngineStatus = rowStatus(torrentEngineItem)
+        assertEquals(R.string.downloads_failed_with_code, torrentEngineStatus.stringRes)
+        assertEquals(listOf(R.string.download_failure_torrent_engine, "TORRENT_ENGINE"), torrentEngineStatus.args)
+
+        val unknownItem = createItem(state = DownloadState.FAILED).copy(failure = DownloadFailure.UNKNOWN)
+        val unknownStatus = rowStatus(unknownItem)
+        assertEquals(R.string.downloads_failed_with_code, unknownStatus.stringRes)
+        assertEquals(listOf(R.string.download_failure_unknown, "UNKNOWN"), unknownStatus.args)
     }
 }

@@ -7,7 +7,9 @@ import com.nexus.stream.data.download.FakeDownloadManager
 import com.nexus.stream.data.download.createTestDownloadItem
 import com.nexus.stream.domain.model.DownloadEffect
 import com.nexus.stream.domain.model.DownloadFailure
+import com.nexus.stream.domain.model.DownloadKind
 import com.nexus.stream.domain.model.DownloadLive
+import com.nexus.stream.domain.model.DownloadSource
 import com.nexus.stream.domain.model.DownloadState
 import com.nexus.stream.domain.repository.TorrentFileChoice
 import kotlinx.coroutines.Dispatchers
@@ -435,20 +437,18 @@ class DownloadsViewModelTest {
             val item = createTestDownloadItem("c1", state = DownloadState.COMPLETED)
             downloadManager.itemsFlow.value = listOf(item)
 
-            viewModel.onEvent(DownloadsEvent.SaveToGallery("c1"))
-            assertEquals(listOf("c1"), downloadManager.exportToGalleryCalls)
+            viewModel.onEvent(DownloadsEvent.MoveToGallery("c1"))
+            assertEquals(listOf("c1"), downloadManager.moveToGalleryCalls)
         }
 
     @Test
     fun DW24_removeFromGallery_callsTheManager() =
         runTest {
-            val item =
-                createTestDownloadItem("c2", state = DownloadState.COMPLETED)
-                    .copy(galleryState = com.nexus.stream.domain.model.GalleryState.SAVED)
+            val item = createTestDownloadItem("c2", state = DownloadState.COMPLETED)
             downloadManager.itemsFlow.value = listOf(item)
 
-            viewModel.onEvent(DownloadsEvent.RemoveFromGallery("c2"))
-            assertEquals(listOf("c2"), downloadManager.removeFromGalleryCalls)
+            viewModel.onEvent(DownloadsEvent.MoveToGallery("c2"))
+            assertEquals(listOf("c2"), downloadManager.moveToGalleryCalls)
         }
 
     @Test
@@ -476,6 +476,39 @@ class DownloadsViewModelTest {
                 viewModel.onEvent(DownloadsEvent.BrowseDiscover)
                 val effect = awaitItem()
                 assertTrue(effect is DownloadsEffect.NavigateToDiscover)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun DW27_findDifferentSource_fromTheMenu_emitsOpenDownloadSheet() =
+        runTest {
+            val torrentItem =
+                createTestDownloadItem("t1", state = DownloadState.FAILED).copy(
+                    kind = DownloadKind.TORRENT,
+                    source = DownloadSource.Torrent("hash1"),
+                    failure = DownloadFailure.TORRENT_ENGINE,
+                )
+            val httpItem =
+                createTestDownloadItem("h1", state = DownloadState.FAILED).copy(
+                    kind = DownloadKind.HTTP,
+                    source = DownloadSource.Http("https://example.com/video.mp4"),
+                    failure = DownloadFailure.LINK_EXPIRED,
+                )
+
+            viewModel.effects.test {
+                viewModel.onEvent(DownloadsEvent.FindDifferentSource(torrentItem))
+                val effect1 = awaitItem() as DownloadsEffect.OpenDownloadSheet
+                assertEquals("t1", effect1.replaceDownloadId)
+                assertEquals(torrentItem.metaId, effect1.request.metaId)
+                assertEquals("t1", effect1.request.replaceDownloadId)
+
+                viewModel.onEvent(DownloadsEvent.FindDifferentSource(httpItem))
+                val effect2 = awaitItem() as DownloadsEffect.OpenDownloadSheet
+                assertEquals("h1", effect2.replaceDownloadId)
+                assertEquals(httpItem.metaId, effect2.request.metaId)
+                assertEquals("h1", effect2.request.replaceDownloadId)
+
                 cancelAndIgnoreRemainingEvents()
             }
         }

@@ -31,6 +31,7 @@ import com.nexus.stream.domain.repository.TorrentFileChoice
 import com.nexus.stream.domain.repository.TorrentResult
 import com.nexus.stream.domain.repository.TorrentTask
 import com.nexus.stream.domain.repository.TorrentUpdate
+import com.nexus.stream.domain.usecase.SERVICE_MIN_GAP_MS
 import com.nexus.stream.domain.usecase.SpeedMeter
 import com.nexus.stream.domain.usecase.TORRENT_SUBDIR
 import com.nexus.stream.domain.usecase.downloadFileExtension
@@ -45,6 +46,7 @@ import com.nexus.stream.domain.usecase.pickToStart
 import com.nexus.stream.domain.usecase.torrentSaveDir
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -77,13 +79,15 @@ class DefaultDownloadManager(
     internal val clock: DownloadClock,
     internal val platform: DownloadPlatformComponents,
     internal val galleryExporter: GalleryExporter,
-    internal val scope: CoroutineScope,
+    scope: CoroutineScope,
 ) : DownloadManager {
     internal val torrentDownloader: TorrentDownloader get() = platform.torrentDownloader
 
+    internal val scope: CoroutineScope = CoroutineScope(scope.coroutineContext + CoroutineExceptionHandler { _, _ -> })
+
     internal val ioDispatcher: CoroutineDispatcher =
         requireNotNull(
-            scope.coroutineContext[kotlin.coroutines.ContinuationInterceptor] as? CoroutineDispatcher,
+            this.scope.coroutineContext[kotlin.coroutines.ContinuationInterceptor] as? CoroutineDispatcher,
         ) { "Scope must contain a CoroutineDispatcher" }
 
     @Inject
@@ -124,7 +128,9 @@ class DefaultDownloadManager(
     internal val lastPersistBytes = ConcurrentHashMap<String, Long>()
     internal val lastProgressTimes = ConcurrentHashMap<String, Long>()
     internal val lastProgressBytes = ConcurrentHashMap<String, Long>()
-    private val schedulerMutex = Mutex()
+    internal var lastServiceStartAt: Long? = null
+    internal val lastAttemptStartTimes = ConcurrentHashMap<String, Long>()
+    internal val schedulerMutex = Mutex()
     private val galleryMutex = Mutex()
 
     override val items: Flow<List<DownloadItem>> = repository.observeAll()
@@ -162,12 +168,6 @@ class DefaultDownloadManager(
         val item = createEnqueuedItem(id, request, now)
         repository.insert(item)
 
-        try {
-            platform.serviceController.ensureRunning()
-        } catch (_: Exception) {
-            // Refused foreground service start is swallowed
-        }
-
         triggerScheduler()
         return EnqueueResult.Added(id)
     }
@@ -175,6 +175,7 @@ class DefaultDownloadManager(
     override fun pause(id: String) {
         scope.launch(ioDispatcher) {
             cancelActiveJob(id)
+            lastAttemptStartTimes.remove(id)
             val item = repository.get(id)
             if (item != null && !item.supportsResume) {
                 platform.fileStore.deletePart(id)
@@ -193,7 +194,11 @@ class DefaultDownloadManager(
                 if (activeJobs.containsKey(id)) return@launch
                 val item = repository.get(id) ?: return@launch
                 if (item.state == DownloadState.DOWNLOADING || item.state == DownloadState.QUEUED) return@launch
-                repository.updateState(id, DownloadState.QUEUED, clock.now(), pauseReason = null, failure = null)
+                val lastStart = lastAttemptStartTimes[id]
+                val now = clock.now()
+                if (lastStart != null && (now - lastStart) < SERVICE_MIN_GAP_MS) return@launch
+                lastAttemptStartTimes[id] = now
+                repository.updateState(id, DownloadState.QUEUED, now, pauseReason = null, failure = null)
                 triggerScheduler()
             } finally {
                 pendingResumes.remove(id)
@@ -203,6 +208,7 @@ class DefaultDownloadManager(
 
     override fun pauseAll() {
         scope.launch(ioDispatcher) {
+            lastAttemptStartTimes.clear()
             val all = repository.getAll()
             val now = clock.now()
             for (item in all) {
@@ -274,12 +280,13 @@ class DefaultDownloadManager(
         val item = repository.get(id)
         if (item?.galleryUri != null) {
             galleryExporter.delete(item.galleryUri)
-        }
-        if (item != null && item.kind == DownloadKind.TORRENT) {
-            val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), id)
-            torrentFolder.deleteRecursively()
         } else {
-            platform.fileStore.delete(id)
+            if (item != null && item.kind == DownloadKind.TORRENT) {
+                val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), id)
+                torrentFolder.deleteRecursively()
+            } else {
+                platform.fileStore.delete(id)
+            }
         }
         fileChoices.remove(id)
         repository.delete(id)
@@ -291,12 +298,13 @@ class DefaultDownloadManager(
         for (item in completed) {
             if (item.galleryUri != null) {
                 galleryExporter.delete(item.galleryUri)
-            }
-            if (item.kind == DownloadKind.TORRENT) {
-                val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), item.id)
-                torrentFolder.deleteRecursively()
             } else {
-                platform.fileStore.delete(item.id)
+                if (item.kind == DownloadKind.TORRENT) {
+                    val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), item.id)
+                    torrentFolder.deleteRecursively()
+                } else {
+                    platform.fileStore.delete(item.id)
+                }
             }
             fileChoices.remove(item.id)
             repository.delete(item.id)
@@ -309,12 +317,60 @@ class DefaultDownloadManager(
         source: DownloadSource,
     ) {
         val item = repository.get(id) ?: return
-        if (item.state != DownloadState.FAILED || item.source !is DownloadSource.Http ||
-            source !is DownloadSource.Http
-        ) {
+        if (item.state != DownloadState.FAILED) {
             return
         }
-        repository.updateSource(id, source, DownloadState.QUEUED, clock.now())
+        fileChoices.remove(id)
+        lastAttemptStartTimes.remove(id)
+        val now = clock.now()
+        val updatedItem: DownloadItem =
+            when {
+                item.source is DownloadSource.Http && source is DownloadSource.Http -> {
+                    item.copy(
+                        source = source,
+                        state = DownloadState.QUEUED,
+                        failure = null,
+                        pauseReason = null,
+                        updatedAt = now,
+                    )
+                }
+
+                item.source is DownloadSource.Torrent && source is DownloadSource.Torrent &&
+                    item.source.infoHash.equals(source.infoHash, ignoreCase = true) -> {
+                    item.copy(
+                        source = source,
+                        state = DownloadState.QUEUED,
+                        failure = null,
+                        pauseReason = null,
+                        updatedAt = now,
+                    )
+                }
+
+                else -> {
+                    if (item.kind == DownloadKind.TORRENT || item.source is DownloadSource.Torrent) {
+                        val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), item.id)
+                        torrentFolder.deleteRecursively()
+                    }
+                    if (item.kind == DownloadKind.HTTP || item.source is DownloadSource.Http) {
+                        platform.fileStore.delete(item.id)
+                    }
+                    item.copy(
+                        kind = if (source is DownloadSource.Torrent) DownloadKind.TORRENT else DownloadKind.HTTP,
+                        source = source,
+                        state = DownloadState.QUEUED,
+                        failure = null,
+                        pauseReason = null,
+                        downloadedBytes = 0L,
+                        totalBytes = 0L,
+                        etag = null,
+                        lastModified = null,
+                        supportsResume = true,
+                        filePath = null,
+                        updatedAt = now,
+                    )
+                }
+            }
+        repository.insert(updatedItem)
         triggerScheduler()
     }
 
@@ -328,6 +384,7 @@ class DefaultDownloadManager(
 
             for (item in all) {
                 if (item.galleryState == GalleryState.SAVING) {
+                    item.galleryUri?.let { galleryExporter.delete(it) }
                     repository.insert(
                         item.copy(
                             galleryState = GalleryState.NONE,
@@ -337,20 +394,10 @@ class DefaultDownloadManager(
                         ),
                     )
                     if (saveOn) {
-                        exportToGallery(item.id)
+                        moveToGallery(item.id)
                     }
                 } else if (item.galleryState == GalleryState.SAVED) {
-                    val uri = item.galleryUri
-                    if (uri == null || !galleryExporter.exists(uri)) {
-                        repository.insert(
-                            item.copy(
-                                galleryState = GalleryState.NONE,
-                                galleryUri = null,
-                                galleryFailure = null,
-                                updatedAt = now,
-                            ),
-                        )
-                    }
+                    dedupeSavedItem(item, now)
                 }
             }
             triggerScheduler()
@@ -377,14 +424,15 @@ class DefaultDownloadManager(
     override suspend fun verifyCompleted(id: String): Boolean {
         val item = repository.get(id)
         val isCompleted = item?.state == DownloadState.COMPLETED
-        val exists = isCompleted && platform.fileStore.fileOf(id)?.exists() == true
+        val file = item?.filePath?.let { File(it) } ?: platform.fileStore.fileOf(id)
+        val exists = isCompleted && file?.exists() == true
         if (isCompleted && !exists) {
             repository.updateState(id, DownloadState.FAILED, clock.now(), failure = DownloadFailure.FILE_MISSING)
         }
         return exists
     }
 
-    override suspend fun exportToGallery(id: String) {
+    override suspend fun moveToGallery(id: String) {
         val preItem = repository.get(id) ?: return
         if (preItem.galleryState == GalleryState.SAVING || preItem.galleryState == GalleryState.SAVED) return
         galleryMutex.withLock {
@@ -406,8 +454,10 @@ class DefaultDownloadManager(
             updateServiceState(repository.getAll())
 
             try {
-                runGalleryExport(item, file)
+                runGalleryMove(item, file)
             } catch (e: CancellationException) {
+                val current = repository.get(item.id)
+                current?.galleryUri?.let { galleryExporter.delete(it) }
                 repository.insert(
                     item.copy(
                         galleryState = GalleryState.NONE,
@@ -418,6 +468,8 @@ class DefaultDownloadManager(
                 )
                 throw e
             } catch (_: Exception) {
+                val current = repository.get(item.id)
+                current?.galleryUri?.let { galleryExporter.delete(it) }
                 repository.insert(
                     item.copy(
                         galleryState = GalleryState.FAILED,
@@ -434,7 +486,18 @@ class DefaultDownloadManager(
         }
     }
 
-    private suspend fun resolveExportFile(item: DownloadItem): File? {
+    override suspend fun moveAllToGallery() {
+        val completed =
+            repository.getAll().filter {
+                it.state == DownloadState.COMPLETED &&
+                    (it.galleryState == GalleryState.NONE || it.galleryState == GalleryState.FAILED)
+            }
+        for (item in completed) {
+            moveToGallery(item.id)
+        }
+    }
+
+    internal suspend fun resolveExportFile(item: DownloadItem): File? {
         val file =
             if (item.kind == DownloadKind.TORRENT) {
                 item.filePath?.let { File(it) }
@@ -456,7 +519,7 @@ class DefaultDownloadManager(
         return file
     }
 
-    private suspend fun checkExportStorage(
+    internal suspend fun checkExportStorage(
         item: DownloadItem,
         file: File,
     ): Boolean {
@@ -477,174 +540,11 @@ class DefaultDownloadManager(
         return true
     }
 
-    private suspend fun runGalleryExport(
-        item: DownloadItem,
-        file: File,
-    ) {
-        val fileName =
-            galleryFileName(
-                title = item.title,
-                metaName = item.metaName,
-                season = item.season,
-                episode = item.episode,
-                extension = file.extension,
-            )
-        val mimeType = galleryMimeType(file.extension)
-        val result =
-            galleryExporter.export(file, fileName, mimeType) { copied, _ ->
-                updateLive { current ->
-                    val cur = current[item.id] ?: DownloadLive()
-                    current + (item.id to cur.copy(copiedBytes = copied))
-                }
-            }
-        when (result) {
-            is GalleryExportResult.Saved -> {
-                repository.insert(
-                    item.copy(
-                        galleryState = GalleryState.SAVED,
-                        galleryUri = result.uri,
-                        galleryFailure = null,
-                        updatedAt = clock.now(),
-                    ),
-                )
-            }
-
-            is GalleryExportResult.Failed -> {
-                repository.insert(
-                    item.copy(
-                        galleryState = GalleryState.FAILED,
-                        galleryUri = null,
-                        galleryFailure = result.failure,
-                        updatedAt = clock.now(),
-                    ),
-                )
-                emitEffect(DownloadEffect.GalleryFailed(item.id, result.failure))
-            }
-        }
-    }
-
-    override suspend fun removeFromGallery(id: String) {
-        val item = repository.get(id) ?: return
-        val uri = item.galleryUri
-        if (uri != null) {
-            galleryExporter.delete(uri)
-        }
-        repository.insert(
-            item.copy(
-                galleryState = GalleryState.NONE,
-                galleryUri = null,
-                galleryFailure = null,
-                updatedAt = clock.now(),
-            ),
-        )
-    }
-
-    override suspend fun exportAllToGallery() {
-        val completed =
-            repository.getAll().filter {
-                it.state == DownloadState.COMPLETED &&
-                    (it.galleryState == GalleryState.NONE || it.galleryState == GalleryState.FAILED)
-            }
-        for (item in completed) {
-            exportToGallery(item.id)
-        }
-    }
-
     internal fun triggerScheduler() {
         scope.launch(ioDispatcher) {
             schedulerMutex.withLock {
                 scheduleDownloads()
             }
-        }
-    }
-
-    private suspend fun scheduleDownloads() {
-        val allItems = repository.getAll()
-        val netStatus = platform.network.status.value
-        val wifiOnly = prefsRepository.wifiOnly.first()
-        val maxConcurrent = prefsRepository.maxConcurrent.first()
-
-        checkRunningGates(allItems, netStatus, wifiOnly)
-        checkWaitingGates(allItems, netStatus, wifiOnly)
-        checkQueuedGates(allItems, netStatus, wifiOnly)
-
-        val updatedItems = repository.getAll()
-        val toStartIds =
-            pickToStart(updatedItems, maxConcurrent) { item ->
-                networkGate(netStatus, wifiOnly, item.allowMetered)
-            }
-        for (id in toStartIds) {
-            val item = updatedItems.firstOrNull { it.id == id } ?: continue
-            startDownloadJob(item)
-        }
-
-        updateServiceState(repository.getAll())
-    }
-
-    private suspend fun checkRunningGates(
-        items: List<DownloadItem>,
-        net: NetworkStatus,
-        wifiOnly: Boolean,
-    ) {
-        for (item in items) {
-            if (activeJobs.containsKey(item.id)) {
-                val gate = networkGate(net, wifiOnly, item.allowMetered)
-                if (gate == NetworkGate.WaitForWifi) {
-                    cancelActiveJob(item.id)
-                    repository.updateState(item.id, DownloadState.WAITING_FOR_WIFI, clock.now())
-                } else if (gate == NetworkGate.WaitForNetwork) {
-                    cancelActiveJob(item.id)
-                    repository.updateState(item.id, DownloadState.WAITING_FOR_NETWORK, clock.now())
-                }
-            }
-        }
-    }
-
-    private suspend fun checkWaitingGates(
-        items: List<DownloadItem>,
-        net: NetworkStatus,
-        wifiOnly: Boolean,
-    ) {
-        for (item in items) {
-            if (item.state == DownloadState.WAITING_FOR_WIFI || item.state == DownloadState.WAITING_FOR_NETWORK) {
-                val gate = networkGate(net, wifiOnly, item.allowMetered)
-                if (gate == NetworkGate.Proceed) {
-                    repository.updateState(item.id, DownloadState.QUEUED, clock.now())
-                }
-            }
-        }
-    }
-
-    private suspend fun checkQueuedGates(
-        items: List<DownloadItem>,
-        net: NetworkStatus,
-        wifiOnly: Boolean,
-    ) {
-        for (item in items) {
-            if (item.state == DownloadState.QUEUED) {
-                val gate = networkGate(net, wifiOnly, item.allowMetered)
-                if (gate == NetworkGate.WaitForWifi) {
-                    repository.updateState(item.id, DownloadState.WAITING_FOR_WIFI, clock.now())
-                } else if (gate == NetworkGate.WaitForNetwork) {
-                    repository.updateState(item.id, DownloadState.WAITING_FOR_NETWORK, clock.now())
-                }
-            }
-        }
-    }
-
-    private fun startDownloadJob(item: DownloadItem) {
-        if (activeJobs.containsKey(item.id)) return
-
-        val job =
-            scope.launch(ioDispatcher) {
-                executeDownload(item)
-            }
-        activeJobs[item.id] = job
-        job.invokeOnCompletion {
-            activeJobs.remove(item.id)
-            speedMeters.remove(item.id)
-            _live.update { current -> current - item.id }
-            triggerScheduler()
         }
     }
 
@@ -663,60 +563,106 @@ class DefaultDownloadManager(
     override fun getTorrentFileChoices(id: String): List<TorrentFileChoice> = fileChoices[id].orEmpty()
 }
 
+internal suspend fun DefaultDownloadManager.scheduleDownloads() {
+    val allItems = repository.getAll()
+    val netStatus = platform.network.status.value
+    val wifiOnly = prefsRepository.wifiOnly.first()
+    val maxConcurrent = prefsRepository.maxConcurrent.first()
+
+    for (item in allItems) {
+        val gate = networkGate(netStatus, wifiOnly, item.allowMetered)
+        if (activeJobs.containsKey(item.id)) {
+            if (gate == NetworkGate.WaitForWifi) {
+                cancelActiveJob(item.id)
+                repository.updateState(item.id, DownloadState.WAITING_FOR_WIFI, clock.now())
+            } else if (gate == NetworkGate.WaitForNetwork) {
+                cancelActiveJob(item.id)
+                repository.updateState(item.id, DownloadState.WAITING_FOR_NETWORK, clock.now())
+            }
+        } else if (item.state == DownloadState.WAITING_FOR_WIFI || item.state == DownloadState.WAITING_FOR_NETWORK) {
+            if (gate == NetworkGate.Proceed) {
+                repository.updateState(item.id, DownloadState.QUEUED, clock.now())
+            }
+        } else if (item.state == DownloadState.QUEUED) {
+            if (gate == NetworkGate.WaitForWifi) {
+                repository.updateState(item.id, DownloadState.WAITING_FOR_WIFI, clock.now())
+            } else if (gate == NetworkGate.WaitForNetwork) {
+                repository.updateState(item.id, DownloadState.WAITING_FOR_NETWORK, clock.now())
+            }
+        }
+    }
+
+    val updatedItems = repository.getAll()
+    val toStartIds =
+        pickToStart(updatedItems, maxConcurrent) { item ->
+            networkGate(netStatus, wifiOnly, item.allowMetered)
+        }
+    for (id in toStartIds) {
+        val item = updatedItems.firstOrNull { it.id == id } ?: continue
+        startDownloadJob(item)
+    }
+
+    updateServiceState(repository.getAll())
+}
+
+private fun DefaultDownloadManager.startDownloadJob(item: DownloadItem) {
+    if (activeJobs.containsKey(item.id)) return
+    lastAttemptStartTimes[item.id] = clock.now()
+
+    val job =
+        scope.launch(ioDispatcher) {
+            try {
+                executeDownload(item)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (expected: Throwable) {
+                val failure =
+                    if (item.kind == DownloadKind.TORRENT) {
+                        DownloadFailure.TORRENT_ENGINE
+                    } else {
+                        DownloadFailure.UNKNOWN
+                    }
+                repository.updateState(item.id, DownloadState.FAILED, clock.now(), failure = failure)
+                emitEffect(DownloadEffect.Failed(item.id, failure))
+            }
+        }
+    activeJobs[item.id] = job
+    job.invokeOnCompletion {
+        activeJobs.remove(item.id)
+        speedMeters.remove(item.id)
+        updateLive { current -> current - item.id }
+        triggerScheduler()
+    }
+}
+
 internal suspend fun DefaultDownloadManager.reconcileAtStart() {
     val all = repository.getAll()
     val now = clock.now()
     val validIds = all.map { it.id }.toSet()
 
     for (item in all) {
-        reconcileItem(item, now)
+        when (item.state) {
+            DownloadState.DOWNLOADING -> {
+                if (item.kind == DownloadKind.TORRENT) {
+                    repository.updateState(item.id, DownloadState.QUEUED, now)
+                } else {
+                    val partLen = platform.fileStore.partFile(item.id).length()
+                    repository.updateProgress(item.id, partLen, item.totalBytes, DownloadState.QUEUED, now)
+                }
+            }
+
+            DownloadState.COMPLETED -> {
+                val file = item.filePath?.let { File(it) } ?: platform.fileStore.fileOf(item.id)
+                if (file == null || !file.exists()) {
+                    repository.updateState(item.id, DownloadState.FAILED, now, failure = DownloadFailure.FILE_MISSING)
+                }
+            }
+
+            else -> {}
+        }
     }
     cleanupOrphanFiles(validIds)
     cleanupOrphanTorrentFolders(validIds)
-}
-
-private suspend fun DefaultDownloadManager.reconcileItem(
-    item: DownloadItem,
-    now: Long,
-) {
-    when (item.state) {
-        DownloadState.DOWNLOADING -> {
-            reconcileDownloadingItem(item, now)
-        }
-
-        DownloadState.COMPLETED -> {
-            reconcileCompletedItem(item, now)
-        }
-
-        else -> {}
-    }
-}
-
-private suspend fun DefaultDownloadManager.reconcileDownloadingItem(
-    item: DownloadItem,
-    now: Long,
-) {
-    if (item.kind == DownloadKind.TORRENT) {
-        repository.updateState(item.id, DownloadState.QUEUED, now)
-    } else {
-        val partLen = platform.fileStore.partFile(item.id).length()
-        repository.updateProgress(item.id, partLen, item.totalBytes, DownloadState.QUEUED, now)
-    }
-}
-
-private suspend fun DefaultDownloadManager.reconcileCompletedItem(
-    item: DownloadItem,
-    now: Long,
-) {
-    val file =
-        if (item.kind == DownloadKind.TORRENT) {
-            item.filePath?.let { File(it) }
-        } else {
-            platform.fileStore.fileOf(item.id)
-        }
-    if (file == null || !file.exists()) {
-        repository.updateState(item.id, DownloadState.FAILED, now, failure = DownloadFailure.FILE_MISSING)
-    }
 }
 
 private fun DefaultDownloadManager.cleanupOrphanFiles(validIds: Set<String>) {
@@ -761,12 +707,15 @@ internal fun DefaultDownloadManager.updateServiceState(items: List<DownloadItem>
                 it.galleryState == GalleryState.SAVING
         }
     if (hasActive) {
-        try {
-            platform.serviceController.ensureRunning()
-        } catch (_: Exception) {
+        val now = clock.now()
+        val lastStart = lastServiceStartAt
+        if (lastStart == null || (now - lastStart) >= SERVICE_MIN_GAP_MS) {
+            lastServiceStartAt = now
+            try {
+                platform.serviceController.ensureRunning()
+            } catch (_: Exception) {
+            }
         }
-    } else {
-        platform.serviceController.stop()
     }
 }
 
@@ -828,4 +777,52 @@ private fun createEnqueuedItem(
         createdAt = now,
         updatedAt = now,
     )
+}
+
+private suspend fun DefaultDownloadManager.dedupeSavedItem(
+    item: DownloadItem,
+    now: Long,
+) {
+    val uri = item.galleryUri
+    val copyPath = if (uri != null && galleryExporter.exists(uri)) galleryExporter.resolvePath(uri) else null
+    val copyFile = copyPath?.let { File(it) }
+    if (copyFile == null || !copyFile.exists()) {
+        repository.insert(
+            item.copy(
+                galleryState = GalleryState.NONE,
+                galleryUri = null,
+                galleryFailure = null,
+                updatedAt = now,
+            ),
+        )
+        return
+    }
+
+    val originalFile =
+        if (item.kind == DownloadKind.TORRENT) {
+            val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), item.id)
+            if (torrentFolder.exists()) item.filePath?.let { File(it) } else null
+        } else {
+            platform.fileStore.fileOf(item.id)
+        }
+
+    val isEarlierCopy =
+        originalFile?.exists() == true &&
+            copyFile.length() == originalFile.length() &&
+            copyFile.canonicalPath != originalFile.canonicalPath
+
+    if (isEarlierCopy) {
+        repository.insert(
+            item.copy(
+                filePath = copyFile.absolutePath,
+                updatedAt = now,
+            ),
+        )
+        if (item.kind == DownloadKind.TORRENT) {
+            val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), item.id)
+            torrentFolder.deleteRecursively()
+        } else {
+            originalFile.delete()
+        }
+    }
 }

@@ -175,7 +175,6 @@ private fun buttonsForFailed(
 @Suppress("LongMethod", "CyclomaticComplexMethod")
 fun updateUiOf(
     state: UpdateState,
-    @Suppress("UnusedParameter") now: Long = 0L,
     autoCheck: Boolean = true,
     showPermissionDialog: Boolean = state is UpdateState.NeedsInstallPermission,
 ): UpdateUi =
@@ -346,7 +345,6 @@ class UpdateViewModel(
     private val updateManager: UpdateManager,
     private val updatePrefsRepository: UpdatePrefsRepository,
     private val packageName: String = "com.drift.stream",
-    private val clock: () -> Long = { System.currentTimeMillis() },
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.Main,
 ) : ViewModel() {
     @Inject
@@ -359,7 +357,6 @@ class UpdateViewModel(
         updateManager = updateManager,
         updatePrefsRepository = updatePrefsRepository,
         packageName = context.packageName,
-        clock = { System.currentTimeMillis() },
         ioDispatcher = ioDispatcher,
     )
 
@@ -392,7 +389,6 @@ class UpdateViewModel(
                 val dialogToShow = showPermissionDialogState.value && state is UpdateState.NeedsInstallPermission
                 updateUiOf(
                     state = state,
-                    now = clock(),
                     autoCheck = autoCheck,
                     showPermissionDialog = dialogToShow,
                 )

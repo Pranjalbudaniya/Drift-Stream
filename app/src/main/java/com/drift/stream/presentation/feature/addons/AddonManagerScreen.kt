@@ -1,6 +1,7 @@
 package com.drift.stream.presentation.feature.addons
 
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -39,10 +40,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -73,7 +74,7 @@ fun AddonManagerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
     val snackbarHostState = remember { SnackbarHostState() }
 
     var handledPrefill by rememberSaveable(prefillUrl) { mutableStateOf(false) }
@@ -113,7 +114,7 @@ fun AddonManagerScreen(
                 }
 
                 is AddonManagerEffect.CopyToClipboard -> {
-                    clipboardManager.setText(AnnotatedString(effect.text))
+                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("", effect.text)))
                 }
             }
         }

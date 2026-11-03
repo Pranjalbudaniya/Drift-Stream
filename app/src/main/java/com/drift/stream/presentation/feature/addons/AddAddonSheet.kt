@@ -29,10 +29,11 @@ import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,6 +48,7 @@ import com.drift.stream.presentation.common.NexusCard
 import com.drift.stream.presentation.common.NexusOutlinedButton
 import com.drift.stream.presentation.common.NexusTextButton
 import com.drift.stream.presentation.theme.NexusTheme
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,7 +130,8 @@ private fun InputContent(
     onEvent: (AddonManagerEvent) -> Unit,
 ) {
     val spacing = NexusTheme.spacing
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
 
     OutlinedTextField(
         value = state.url,
@@ -152,14 +155,20 @@ private fun InputContent(
     ) {
         NexusOutlinedButton(
             onClick = {
-                val clipText =
-                    clipboardManager
-                        .getText()
-                        ?.text
-                        ?.trim()
-                        .orEmpty()
-                if (clipText.isNotEmpty()) {
-                    onEvent(AddonManagerEvent.UrlChanged(clipText))
+                scope.launch {
+                    val clipText =
+                        clipboard
+                            .getClipEntry()
+                            ?.clipData
+                            ?.takeIf { it.itemCount > 0 }
+                            ?.getItemAt(0)
+                            ?.text
+                            ?.toString()
+                            ?.trim()
+                            .orEmpty()
+                    if (clipText.isNotEmpty()) {
+                        onEvent(AddonManagerEvent.UrlChanged(clipText))
+                    }
                 }
             },
         ) {

@@ -18,5 +18,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "NexusStream"
+rootProject.name = "DriftStream"
 include(":app")

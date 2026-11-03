@@ -1,3 +1,3 @@
-# Nexus Stream
+# Drift Stream
 
 Coming soon

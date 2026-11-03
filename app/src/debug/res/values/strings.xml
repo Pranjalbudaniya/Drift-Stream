@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="dev_tools_label">Nexus Dev</string>
+    <string name="dev_tools_label">Drift Dev</string>
     <string name="dev_tools_theme_gallery">Theme gallery</string>
     <string name="gallery_title">Theme gallery</string>
     <string name="gallery_effective_accent">Effective accent: %1$s</string>

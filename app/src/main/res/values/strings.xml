@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Nexus Stream</string>
+    <string name="app_name">Drift Stream</string>
 
     <!-- Accent swatches -->
     <string name="accent_violet">Violet</string>
@@ -166,7 +166,7 @@
     <string name="navigate_up">Back</string>
 
     <!-- Placeholders & Screens -->
-    <string name="home_title">Nexus Stream</string>
+    <string name="home_title">Drift Stream</string>
     <string name="home_placeholder">Home</string>
     <string name="library_title">Library</string>
 
@@ -253,7 +253,7 @@
     <string name="downloads_gallery_reason_unavailable">Gallery isn\'t available</string>
     <string name="download_notif_saving_gallery">Moving to Gallery</string>
     <string name="downloads_setting_gallery">Keep downloads in Gallery</string>
-    <string name="downloads_setting_gallery_caption">Finished downloads are moved to Movies/Nexus Stream so Gallery and other apps can see them. If you delete them in the Gallery app they disappear from Downloads too.</string>
+    <string name="downloads_setting_gallery_caption">Finished downloads are moved to Movies/Drift Stream so Gallery and other apps can see them. If you delete them in the Gallery app they disappear from Downloads too.</string>
     <string name="downloads_gallery_offer_title">Move your existing downloads too?</string>
     <string name="downloads_gallery_offer_all">Move all</string>
     <string name="downloads_gallery_offer_new">Only new</string>
@@ -432,7 +432,7 @@
     <string name="settings_about_issues">Report an issue</string>
     <string name="settings_about_licenses">Open-source licenses</string>
     <string name="settings_about_disclaimer">Disclaimer</string>
-    <string name="settings_about_disclaimer_text">Nexus Stream is a media player. It does not host, provide or recommend any content. Everything you watch comes from addons you install yourself, and you are responsible for following the laws that apply to you.</string>
+    <string name="settings_about_disclaimer_text">Drift Stream is a media player. It does not host, provide or recommend any content. Everything you watch comes from addons you install yourself, and you are responsible for following the laws that apply to you.</string>
     <string name="settings_about_no_app">No app can open this link.</string>
     <string name="settings_about_close">Close</string>
 
@@ -686,7 +686,7 @@
     <!-- Torrent streaming foreground service -->
     <string name="torrent_service_channel_name">Torrent streaming</string>
     <string name="torrent_service_title">Streaming a torrent</string>
-    <string name="torrent_service_text">Nexus Stream is downloading and serving a video.</string>
+    <string name="torrent_service_text">Drift Stream is downloading and serving a video.</string>
     <string name="torrent_service_action_stop">Stop</string>
 
     <!-- Metered network blocked error -->
@@ -840,7 +840,7 @@
     <string name="update_cancel">Cancel</string>
     <string name="update_verifying">Checking the file…</string>
     <string name="update_permission_title">Allow installing updates</string>
-    <string name="update_permission_body">Android needs your permission before Nexus Stream can install an update. You will be taken to a settings page; allow it and come back.</string>
+    <string name="update_permission_body">Android needs your permission before Drift Stream can install an update. You will be taken to a settings page; allow it and come back.</string>
     <string name="update_open_settings">Open settings</string>
     <string name="update_not_now">Not now</string>
     <string name="update_allow_install">Allow and install</string>

@@ -1,1 +1,1 @@
-# Default Proguard rules for Nexus Stream
+# Default Proguard rules for Drift Stream

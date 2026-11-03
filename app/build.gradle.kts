@@ -10,11 +10,11 @@ plugins {
 }
 
 android {
-    namespace = "com.nexus.stream"
+    namespace = "com.drift.stream"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.nexus.stream"
+        applicationId = "com.drift.stream"
         minSdk = 31
         targetSdk = 36
         // Version rule: versionCode = major * 10000 + minor * 100 + patch

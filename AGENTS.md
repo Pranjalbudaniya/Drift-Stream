@@ -1,7 +1,7 @@
-# Nexus Stream: Agent Rules
+# Drift Stream: Agent Rules
 
 Native Android app that consumes Stremio addons, with a built-in torrent streaming engine and a libVLC player.
-Kotlin, Jetpack Compose, Material 3, Clean Architecture + MVVM. Package `com.nexus.stream`. minSdk 31. Phones only. English only.
+Kotlin, Jetpack Compose, Material 3, Clean Architecture + MVVM. Package `com.drift.stream`. minSdk 31. Phones only. English only.
 
 ## Source of truth
 - Spec: `docs/NEXUS_STREAM_PROJECT_MEMORY.md`. Read the sections your prompt lists before coding.

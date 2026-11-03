@@ -1,0 +1,724 @@
+package com.drift.stream.presentation.feature.detail
+
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImage
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import com.drift.stream.R
+import com.drift.stream.domain.model.ListStatus
+import com.drift.stream.domain.model.MetaDetail
+import com.drift.stream.domain.model.PlayIntent
+import com.drift.stream.domain.usecase.DetailDownloadState
+import com.drift.stream.domain.usecase.detailDownloadRes
+import com.drift.stream.domain.usecase.timeLeftParts
+import com.drift.stream.presentation.common.NexusButton
+import com.drift.stream.presentation.common.NexusOutlinedButton
+import com.drift.stream.presentation.common.labelResId
+import com.drift.stream.presentation.theme.NexusTheme
+
+private const val GRADIENT_STOP_THRESHOLD: Float = 0.55f
+private const val LOGO_WIDTH_FRACTION: Float = 0.7f
+private const val PREVIEW_PERCENT: Int = 42
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun DetailHeader(
+    meta: MetaDetail,
+    inWatchlist: Boolean,
+    isSynopsisExpanded: Boolean,
+    trailerUrl: String?,
+    primaryPlay: PrimaryPlayState,
+    onPlayMain: () -> Unit,
+    onChooseSource: () -> Unit = {},
+    onOpenWatchOptions: () -> Unit,
+    onOpenTrailer: () -> Unit,
+    onDownload: () -> Unit,
+    onToggleSynopsis: () -> Unit,
+    onOpenAllGenres: () -> Unit,
+    onOpenAllCast: () -> Unit,
+    onOpenAllDirectors: () -> Unit,
+    modifier: Modifier = Modifier,
+    listStatus: ListStatus? = null,
+    downloadState: DetailDownloadState = DetailDownloadState.None,
+) {
+    val configuration = LocalConfiguration.current
+    val headerHeight = headerHeightDp(configuration.screenHeightDp.toFloat()).dp
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        BackdropSection(
+            meta = meta,
+            modifier = Modifier.fillMaxWidth().height(headerHeight),
+        )
+
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = NexusTheme.spacing.lg),
+        ) {
+            Spacer(modifier = Modifier.height(NexusTheme.spacing.sm))
+
+            InfoLine(meta = meta)
+
+            Spacer(modifier = Modifier.height(NexusTheme.spacing.md))
+
+            PrimaryPlayButton(
+                primaryPlay = primaryPlay,
+                onPlayMain = onPlayMain,
+                onChooseSource = onChooseSource,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(modifier = Modifier.height(NexusTheme.spacing.sm))
+
+            ActionButtonsRow(
+                meta = meta,
+                inWatchlist = inWatchlist,
+                listStatus = listStatus,
+                trailerUrl = trailerUrl,
+                downloadState = downloadState,
+                onOpenWatchOptions = onOpenWatchOptions,
+                onOpenTrailer = onOpenTrailer,
+                onDownload = onDownload,
+            )
+
+            if (!meta.description.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(NexusTheme.spacing.md))
+                SynopsisSection(
+                    description = meta.description,
+                    isExpanded = isSynopsisExpanded,
+                    onToggleSynopsis = onToggleSynopsis,
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(NexusTheme.spacing.md))
+        ChipRowSection(
+            title = stringResource(R.string.detail_genres),
+            items = meta.genres,
+            onAll = onOpenAllGenres,
+        )
+
+        Spacer(modifier = Modifier.height(NexusTheme.spacing.sm))
+        ChipRowSection(
+            title = stringResource(R.string.detail_cast),
+            items = meta.cast,
+            onAll = onOpenAllCast,
+        )
+
+        Spacer(modifier = Modifier.height(NexusTheme.spacing.sm))
+        ChipRowSection(
+            title = stringResource(R.string.detail_directors_heading),
+            items = meta.directors,
+            onAll = onOpenAllDirectors,
+        )
+    }
+}
+
+@Composable
+private fun BackdropSection(
+    meta: MetaDetail,
+    modifier: Modifier = Modifier,
+) {
+    val backdropUrl = meta.background ?: meta.poster
+    val gradientColor = MaterialTheme.colorScheme.background
+
+    Box(
+        modifier =
+            modifier
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        if (!backdropUrl.isNullOrBlank()) {
+            AsyncImage(
+                model =
+                    ImageRequest
+                        .Builder(LocalPlatformContext.current)
+                        .data(backdropUrl)
+                        .crossfade(true)
+                        .build(),
+                contentDescription = meta.name,
+                contentScale = ContentScale.Crop,
+                alignment = Alignment.TopCenter,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = meta.name,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0.0f to Color.Transparent,
+                            GRADIENT_STOP_THRESHOLD to Color.Transparent,
+                            1.0f to gradientColor,
+                        ),
+                    ),
+        )
+
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = NexusTheme.spacing.lg, vertical = NexusTheme.spacing.sm),
+            contentAlignment = Alignment.BottomStart,
+        ) {
+            if (!meta.logo.isNullOrBlank()) {
+                AsyncImage(
+                    model =
+                        ImageRequest
+                            .Builder(LocalPlatformContext.current)
+                            .data(meta.logo)
+                            .crossfade(true)
+                            .build(),
+                    contentDescription = meta.name,
+                    contentScale = ContentScale.Fit,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth(LOGO_WIDTH_FRACTION)
+                            .heightIn(max = 64.dp),
+                    alignment = Alignment.BottomStart,
+                )
+            } else {
+                Text(
+                    text = meta.name,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoLine(
+    meta: MetaDetail,
+    modifier: Modifier = Modifier,
+) {
+    val infoParts =
+        listOfNotNull(
+            meta.releaseInfo?.takeIf { it.isNotBlank() },
+            meta.runtime?.takeIf { it.isNotBlank() },
+            meta.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" },
+        )
+    if (infoParts.isNotEmpty()) {
+        Text(
+            text = infoParts.joinToString(" • "),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = modifier,
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ActionButtonsRow(
+    meta: MetaDetail,
+    inWatchlist: Boolean,
+    trailerUrl: String?,
+    downloadState: DetailDownloadState,
+    onOpenWatchOptions: () -> Unit,
+    onOpenTrailer: () -> Unit,
+    onDownload: () -> Unit,
+    modifier: Modifier = Modifier,
+    listStatus: ListStatus? = null,
+) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(NexusTheme.spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(NexusTheme.spacing.sm),
+        maxItemsInEachRow = 3,
+    ) {
+        val watchlistDesc =
+            if (inWatchlist) {
+                stringResource(R.string.detail_watchlist_remove_desc, meta.name)
+            } else {
+                stringResource(R.string.detail_watchlist_add_desc, meta.name)
+            }
+
+        val (watchlistLabel, watchlistIcon) =
+            if (listStatus != null) {
+                stringResource(listStatus.labelResId()) to Icons.Default.Check
+            } else {
+                stringResource(R.string.detail_watchlist) to Icons.Default.Add
+            }
+
+        NexusOutlinedButton(
+            onClick = onOpenWatchOptions,
+            modifier = Modifier.weight(1f),
+        ) {
+            Icon(
+                imageVector = watchlistIcon,
+                contentDescription = watchlistDesc,
+                modifier = Modifier.size(ButtonDefaults.IconSize),
+            )
+            Spacer(modifier = Modifier.width(NexusTheme.spacing.xs))
+            Text(
+                text = watchlistLabel,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        if (trailerUrl != null) {
+            NexusOutlinedButton(
+                onClick = onOpenTrailer,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                )
+                Spacer(modifier = Modifier.width(NexusTheme.spacing.xs))
+                Text(
+                    text = stringResource(R.string.detail_trailer),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        if (meta.type == "movie" || meta.type == "series") {
+            DetailDownloadButton(
+                downloadState = downloadState,
+                onClick = onDownload,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+fun DetailDownloadButton(
+    downloadState: DetailDownloadState,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    NexusOutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+    ) {
+        when (downloadState) {
+            DetailDownloadState.None -> {
+                Icon(
+                    painter = painterResource(R.drawable.ic_download),
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                )
+            }
+
+            DetailDownloadState.Queued -> {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                    strokeWidth = 2.dp,
+                )
+            }
+
+            is DetailDownloadState.Downloading -> {
+                val progress = downloadState.percent?.let { it / 100f }
+                if (progress != null) {
+                    CircularProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.size(ButtonDefaults.IconSize),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(ButtonDefaults.IconSize),
+                        strokeWidth = 2.dp,
+                    )
+                }
+            }
+
+            DetailDownloadState.Paused -> {
+                Icon(
+                    painter = painterResource(R.drawable.ic_download),
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                )
+            }
+
+            DetailDownloadState.Failed -> {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
+
+            DetailDownloadState.Completed -> {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(NexusTheme.spacing.xs))
+        val label =
+            if (downloadState is DetailDownloadState.Downloading && downloadState.percent != null) {
+                stringResource(R.string.detail_download_progress, downloadState.percent)
+            } else {
+                stringResource(detailDownloadRes(downloadState))
+            }
+        Text(
+            text = label,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun SynopsisSection(
+    description: String,
+    isExpanded: Boolean,
+    onToggleSynopsis: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var canOverflow by remember { mutableStateOf(false) }
+    var hasMeasured by remember { mutableStateOf(false) }
+
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .animateContentSize(),
+    ) {
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = if (isExpanded) Int.MAX_VALUE else 4,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { result ->
+                if (!hasMeasured) {
+                    canOverflow = result.hasVisualOverflow || result.lineCount > 4
+                    hasMeasured = true
+                }
+            },
+        )
+
+        if (canOverflow) {
+            Text(
+                text =
+                    stringResource(
+                        if (isExpanded) R.string.detail_read_less else R.string.detail_read_more,
+                    ),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier =
+                    Modifier
+                        .clickable(onClick = onToggleSynopsis)
+                        .padding(vertical = NexusTheme.spacing.xs),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PrimaryPlayButton(
+    primaryPlay: PrimaryPlayState,
+    onPlayMain: () -> Unit,
+    onChooseSource: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when (primaryPlay) {
+        is PrimaryPlayState.NotReady -> {
+            NexusButton(
+                onClick = {},
+                enabled = false,
+                modifier = modifier,
+            ) {
+                Spacer(modifier = Modifier.size(ButtonDefaults.IconSize))
+            }
+        }
+
+        is PrimaryPlayState.Ready -> {
+            ReadyPlayButton(primaryPlay, onPlayMain, onChooseSource, modifier)
+        }
+    }
+}
+
+@Composable
+private fun ReadyPlayButton(
+    ready: PrimaryPlayState.Ready,
+    onPlayMain: () -> Unit,
+    onChooseSource: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val intent = ready.intent
+    val baseLabel = formatPlayLabel(intent)
+    val resumeVisuals =
+        if (intent is PlayIntent.Resume && intent.durationMs > 0L) {
+            formatResumeVisuals(intent)
+        } else {
+            null
+        }
+
+    val displayLabel =
+        if (resumeVisuals?.timeLeftStr != null) {
+            "$baseLabel • ${resumeVisuals.timeLeftStr}"
+        } else {
+            baseLabel
+        }
+
+    val a11yDesc = resumeVisuals?.a11yDesc
+    val isResume = intent is PlayIntent.Resume && ready.isEnabled
+    val haptic = LocalHapticFeedback.current
+    val chooseSourceLabel = stringResource(R.string.detail_choose_source_a11y)
+    val interactionSource = remember { MutableInteractionSource() }
+
+    Box(
+        modifier = modifier.clip(NexusTheme.shapes.button),
+    ) {
+        if (isResume) {
+            Surface(
+                shape = NexusTheme.shapes.button,
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            interactionSource = interactionSource,
+                            indication = ripple(),
+                            enabled = ready.isEnabled,
+                            onClick = onPlayMain,
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onChooseSource()
+                            },
+                            onLongClickLabel = chooseSourceLabel,
+                            role = Role.Button,
+                        ).then(
+                            if (a11yDesc != null) {
+                                Modifier.semantics { contentDescription = a11yDesc }
+                            } else {
+                                Modifier
+                            },
+                        ),
+            ) {
+                Row(
+                    modifier =
+                        Modifier
+                            .defaultMinSize(
+                                minWidth = ButtonDefaults.MinWidth,
+                                minHeight = ButtonDefaults.MinHeight,
+                            ).padding(ButtonDefaults.ContentPadding),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(ButtonDefaults.IconSize),
+                    )
+                    Spacer(modifier = Modifier.width(NexusTheme.spacing.xs))
+                    Text(
+                        text = displayLabel,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        } else {
+            NexusButton(
+                onClick = onPlayMain,
+                enabled = ready.isEnabled,
+                interactionSource = interactionSource,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (a11yDesc != null) {
+                                Modifier.semantics { contentDescription = a11yDesc }
+                            } else {
+                                Modifier
+                            },
+                        ),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.IconSize),
+                )
+                Spacer(modifier = Modifier.width(NexusTheme.spacing.xs))
+                Text(
+                    text = displayLabel,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        if (resumeVisuals != null && resumeVisuals.progressFraction > 0f) {
+            LinearProgressIndicator(
+                progress = { resumeVisuals.progressFraction },
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .height(NexusTheme.spacing.xxs),
+                color = MaterialTheme.colorScheme.onPrimary,
+                trackColor = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+private data class ResumeVisuals(
+    val timeLeftStr: String,
+    val progressFraction: Float,
+    val a11yDesc: String,
+)
+
+@Composable
+private fun formatPlayLabel(intent: PlayIntent): String =
+    when (intent) {
+        is PlayIntent.Start -> {
+            stringResource(R.string.detail_play)
+        }
+
+        is PlayIntent.Resume -> {
+            if (intent.season != null && intent.episode != null) {
+                stringResource(R.string.detail_resume_episode, intent.season, intent.episode)
+            } else {
+                stringResource(R.string.detail_resume)
+            }
+        }
+
+        is PlayIntent.Next -> {
+            if (intent.season != null && intent.episode != null) {
+                stringResource(R.string.detail_play_episode, intent.season, intent.episode)
+            } else {
+                stringResource(R.string.detail_play_next)
+            }
+        }
+    }
+
+@Composable
+private fun formatResumeVisuals(intent: PlayIntent.Resume): ResumeVisuals {
+    val timeLeft = timeLeftParts(intent.positionMs, intent.durationMs)
+    val timeLeftStr =
+        when {
+            timeLeft.hours > 0 && timeLeft.minutes > 0 -> {
+                stringResource(R.string.detail_time_left_hr_min, timeLeft.hours, timeLeft.minutes)
+            }
+
+            timeLeft.hours > 0 -> {
+                stringResource(R.string.detail_time_left_hr, timeLeft.hours)
+            }
+
+            else -> {
+                stringResource(R.string.detail_time_left_min, timeLeft.minutes)
+            }
+        }
+
+    val percent =
+        ((intent.positionMs.toDouble() / intent.durationMs.toDouble()) * 100)
+            .toInt()
+            .coerceIn(0, 100)
+    val a11yDesc = stringResource(R.string.detail_resume_a11y, percent, timeLeftStr)
+    val fraction = (intent.positionMs.toFloat() / intent.durationMs.toFloat()).coerceIn(0f, 1f)
+
+    return ResumeVisuals(
+        timeLeftStr = timeLeftStr,
+        progressFraction = fraction,
+        a11yDesc = a11yDesc,
+    )
+}
+
+@Preview(name = "DetailDownloadButton - States - Light")
+@Preview(name = "DetailDownloadButton - States - Dark", uiMode = android.content.res.Configuration.UI_MODE_NIGHT_YES)
+@Composable
+internal fun DetailDownloadButtonStatesPreview() {
+    NexusTheme {
+        Column(
+            modifier = Modifier.padding(NexusTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(NexusTheme.spacing.sm),
+        ) {
+            DetailDownloadButton(downloadState = DetailDownloadState.None, onClick = {})
+            DetailDownloadButton(downloadState = DetailDownloadState.Queued, onClick = {})
+            DetailDownloadButton(downloadState = DetailDownloadState.Downloading(PREVIEW_PERCENT), onClick = {})
+            DetailDownloadButton(downloadState = DetailDownloadState.Paused, onClick = {})
+            DetailDownloadButton(downloadState = DetailDownloadState.Failed, onClick = {})
+            DetailDownloadButton(downloadState = DetailDownloadState.Completed, onClick = {})
+        }
+    }
+}

@@ -3,10 +3,10 @@
 
     <application>
         <activity
-            android:name="com.nexus.stream.dev.DevToolsActivity"
+            android:name="com.drift.stream.dev.DevToolsActivity"
             android:exported="true"
             android:label="@string/dev_tools_label"
-            android:theme="@style/Theme.NexusStream">
+            android:theme="@style/Theme.DriftStream">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

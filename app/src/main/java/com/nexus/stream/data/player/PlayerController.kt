@@ -44,6 +44,10 @@ interface PlayerController {
 
     fun setVideoScale(scale: VideoScale)
 
+    fun onAppBackgrounded()
+
+    fun onAppForegrounded()
+
     fun release() // idempotent; never blocks the main thread
 }
 

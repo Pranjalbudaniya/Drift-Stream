@@ -2608,6 +2608,8 @@ class PlayerViewModelTest {
         val subtitleDelayCalls = mutableListOf<Long>()
         val videoScaleCalls = mutableListOf<VideoScale>()
         var releaseCallCount = 0
+        var appBackgroundedCallCount = 0
+        var appForegroundedCallCount = 0
 
         override fun createSurface(context: Context): View = View(context)
 
@@ -2653,6 +2655,14 @@ class PlayerViewModelTest {
 
         override fun setVideoScale(scale: VideoScale) {
             videoScaleCalls.add(scale)
+        }
+
+        override fun onAppBackgrounded() {
+            appBackgroundedCallCount++
+        }
+
+        override fun onAppForegrounded() {
+            appForegroundedCallCount++
         }
 
         override fun release() {
@@ -3101,5 +3111,82 @@ class PlayerViewModelTest {
                 mockTracker.flush()
                 fakeNextCtrl.clear()
             }
+        }
+
+    @Test
+    fun PS1_appStopped_pausesSavesProgress_andBackgroundsTheController() =
+        runTest(testDispatcher) {
+            val url = "https://example.com/video.mp4"
+            holder.start(
+                PlaybackSelection("Movie", PlaybackSource.Direct(url), "movie", "m1", "v1"),
+            )
+            val vm = createViewModel()
+            advanceUntilIdle()
+            val ctrl = fakeFactory.createdControllers.single()
+            ctrl.snapshotFlow.value = PlayerSnapshot(isPlaying = true, positionMs = 1000L, durationMs = 5000L)
+            advanceUntilIdle()
+
+            vm.onEvent(PlayerEvent.AppStopped)
+            advanceUntilIdle()
+
+            assertEquals(1, ctrl.pauseCallCount)
+            assertEquals(1, ctrl.appBackgroundedCallCount)
+        }
+
+    @Test
+    fun PS2_appStarted_foregroundsTheController() =
+        runTest(testDispatcher) {
+            val url = "https://example.com/video.mp4"
+            holder.start(
+                PlaybackSelection("Movie", PlaybackSource.Direct(url), "movie", "m1", "v1"),
+            )
+            val vm = createViewModel()
+            advanceUntilIdle()
+            val ctrl = fakeFactory.createdControllers.single()
+
+            vm.onEvent(PlayerEvent.AppStarted)
+            advanceUntilIdle()
+
+            assertEquals(1, ctrl.appForegroundedCallCount)
+        }
+
+    @Test
+    fun PS3_appStartedAndStopped_withoutAController_areIgnored() =
+        runTest(testDispatcher) {
+            val vm = createViewModel()
+            advanceUntilIdle()
+            assertNull(vm.getController())
+
+            vm.onEvent(PlayerEvent.AppStarted)
+            vm.onEvent(PlayerEvent.AppStopped)
+            advanceUntilIdle()
+
+            assertTrue(fakeFactory.createdControllers.isEmpty())
+        }
+
+    @Test
+    fun PS4_appStarted_doesNotStartPlayback() =
+        runTest(testDispatcher) {
+            val url = "https://example.com/video.mp4"
+            holder.start(
+                PlaybackSelection("Movie", PlaybackSource.Direct(url), "movie", "m1", "v1"),
+            )
+            val vm = createViewModel()
+            advanceUntilIdle()
+            val ctrl = fakeFactory.createdControllers.single()
+            ctrl.snapshotFlow.value = PlayerSnapshot(isPlaying = true, positionMs = 1000L, durationMs = 5000L)
+            advanceUntilIdle()
+
+            vm.onEvent(PlayerEvent.AppStopped)
+            advanceUntilIdle()
+
+            val playedCountBefore = ctrl.playedUrls.size
+            val resumeCountBefore = ctrl.resumeCallCount
+
+            vm.onEvent(PlayerEvent.AppStarted)
+            advanceUntilIdle()
+
+            assertEquals(playedCountBefore, ctrl.playedUrls.size)
+            assertEquals(resumeCountBefore, ctrl.resumeCallCount)
         }
 }

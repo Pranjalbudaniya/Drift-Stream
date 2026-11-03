@@ -4,14 +4,23 @@ import android.content.Context
 import android.net.Uri
 import android.view.View
 import com.nexus.stream.di.IoDispatcher
+import com.nexus.stream.domain.usecase.GateAction
+import com.nexus.stream.domain.usecase.PlaybackSurfaceGate
+import com.nexus.stream.domain.usecase.VideoHealth
+import com.nexus.stream.domain.usecase.VideoWatchdog
+import com.nexus.stream.domain.usecase.WATCHDOG_TICK_INTERVAL_MS
+import com.nexus.stream.domain.usecase.WatchdogAction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
@@ -42,6 +51,13 @@ class LibVlcPlayer(
     override val tracks: StateFlow<PlayerTracks> = _tracks.asStateFlow()
 
     private var currentMedia: Media? = null
+    private var currentMediaUrl: String? = null
+    private var currentLayout: VLCVideoLayout? = null
+    private var currentVoutCount: Int = 0
+    private var hardwareDecoding: Boolean = true
+    private val gate = PlaybackSurfaceGate()
+    private val watchdog = VideoWatchdog()
+    private var watchdogJob: Job? = null
     private val released = AtomicBoolean(false)
 
     init {
@@ -52,9 +68,11 @@ class LibVlcPlayer(
                     _snapshot.update {
                         it.copy(isPlaying = true, isBuffering = false, rate = mediaPlayer.rate)
                     }
+                    startWatchdogTicker()
                 }
 
                 MediaPlayer.Event.Paused -> {
+                    stopWatchdogTicker()
                     _snapshot.update {
                         it.copy(isPlaying = false, rate = mediaPlayer.rate)
                     }
@@ -68,15 +86,23 @@ class LibVlcPlayer(
                 }
 
                 MediaPlayer.Event.EncounteredError -> {
+                    stopWatchdogTicker()
+                    currentVoutCount = 0
                     _snapshot.update {
                         it.copy(failed = true, isPlaying = false, isBuffering = false, rate = mediaPlayer.rate)
                     }
                 }
 
                 MediaPlayer.Event.EndReached -> {
+                    stopWatchdogTicker()
+                    currentVoutCount = 0
                     _snapshot.update {
                         it.copy(ended = true, isPlaying = false, isBuffering = false, rate = mediaPlayer.rate)
                     }
+                }
+
+                MediaPlayer.Event.Vout -> {
+                    currentVoutCount = event.voutCount
                 }
 
                 MediaPlayer.Event.LengthChanged -> {
@@ -137,15 +163,32 @@ class LibVlcPlayer(
 
     override fun createSurface(context: Context): View {
         val layout = VLCVideoLayout(context)
+        currentLayout = layout
         mediaPlayer.attachViews(layout, null, true, false)
+        val actions = gate.onSurfaceAttached(System.identityHashCode(layout))
+        executeGateActions(actions)
         return layout
     }
 
     override fun detachSurface() {
+        val layout = currentLayout
         mediaPlayer.vlcVout.detachViews()
+        if (layout != null) {
+            val actions = gate.onSurfaceDetached(System.identityHashCode(layout))
+            executeGateActions(actions)
+        }
     }
 
     override fun play(url: String) {
+        val actions = gate.onPlayRequested(url)
+        executeGateActions(actions)
+    }
+
+    private fun startPlaybackInternal(url: String) {
+        currentMediaUrl = url
+        currentVoutCount = 0
+        hardwareDecoding = true
+        watchdog.onNewMedia()
         val oldMedia = currentMedia
         val media = Media(libVlc, Uri.parse(url))
         currentMedia = media
@@ -155,6 +198,37 @@ class LibVlcPlayer(
             it.copy(failed = false, ended = false)
         }
         mediaPlayer.play()
+    }
+
+    private fun executeGateActions(actions: List<GateAction>) {
+        for (action in actions) {
+            when (action) {
+                is GateAction.StartPlayback -> {
+                    startPlaybackInternal(action.url)
+                }
+
+                GateAction.PausePlayback -> {
+                    mediaPlayer.pause()
+                }
+
+                GateAction.DetachVideo -> {
+                    mediaPlayer.vlcVout.detachViews()
+                }
+
+                GateAction.AttachVideo -> {
+                    currentLayout?.let { mediaPlayer.attachViews(it, null, true, false) }
+                }
+
+                GateAction.DetachPreviousThenAttach -> {
+                    mediaPlayer.vlcVout.detachViews()
+                    currentLayout?.let { mediaPlayer.attachViews(it, null, true, false) }
+                }
+
+                GateAction.NudgeFrame -> {
+                    mediaPlayer.time = mediaPlayer.time
+                }
+            }
+        }
     }
 
     override fun pause() {
@@ -213,8 +287,89 @@ class LibVlcPlayer(
         mediaPlayer.videoScale = scaleType
     }
 
+    override fun onAppBackgrounded() {
+        val isPlaying = _snapshot.value.isPlaying
+        val actions = gate.onBackground(isPlaying)
+        executeGateActions(actions)
+    }
+
+    override fun onAppForegrounded() {
+        val mediaLoaded = currentMedia != null
+        val isPlaying = _snapshot.value.isPlaying
+        val actions = gate.onForeground(mediaLoaded, isPlaying)
+        executeGateActions(actions)
+    }
+
+    private fun startWatchdogTicker() {
+        watchdogJob?.cancel()
+        watchdogJob =
+            scope.launch {
+                while (isActive) {
+                    delay(WATCHDOG_TICK_INTERVAL_MS)
+                    val isPlaying = _snapshot.value.isPlaying
+                    if (!isPlaying) break
+                    val hasVideoTrack = mediaPlayer.videoTracksCount > 0
+                    val health =
+                        VideoHealth(
+                            isPlaying = isPlaying,
+                            hasVideoTrack = hasVideoTrack,
+                            voutCount = currentVoutCount,
+                            hardwareDecoding = hardwareDecoding,
+                        )
+                    val action = watchdog.onTick(System.currentTimeMillis(), health)
+                    handleWatchdogAction(action)
+                }
+            }
+    }
+
+    private fun stopWatchdogTicker() {
+        watchdogJob?.cancel()
+        watchdogJob = null
+    }
+
+    private fun handleWatchdogAction(action: WatchdogAction) {
+        when (action) {
+            WatchdogAction.None -> {}
+
+            WatchdogAction.Reattach -> {
+                currentLayout?.let {
+                    mediaPlayer.vlcVout.detachViews()
+                    mediaPlayer.attachViews(it, null, true, false)
+                }
+            }
+
+            WatchdogAction.RestartInSoftware -> {
+                restartInSoftware()
+            }
+        }
+    }
+
+    private fun restartInSoftware() {
+        val url = currentMediaUrl ?: return
+        val currentPos = mediaPlayer.time
+        val wasPlaying = _snapshot.value.isPlaying
+        hardwareDecoding = false
+
+        val oldMedia = currentMedia
+        val media = Media(libVlc, Uri.parse(url))
+        media.setHWDecoderEnabled(false, false)
+        currentMedia = media
+        mediaPlayer.media = media
+        oldMedia?.release()
+
+        if (currentPos > 0) {
+            mediaPlayer.time = currentPos
+        }
+        if (wasPlaying) {
+            mediaPlayer.play()
+        }
+    }
+
     override fun release() {
         if (released.compareAndSet(false, true)) {
+            stopWatchdogTicker()
+            gate.onReleased()
+            currentLayout = null
             mediaPlayer.setEventListener(null)
             mediaPlayer.vlcVout.detachViews()
             currentMedia?.release()

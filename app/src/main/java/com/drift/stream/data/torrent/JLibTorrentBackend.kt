@@ -1,5 +1,10 @@
 package com.drift.stream.data.torrent
 
+import com.drift.stream.di.IoDispatcher
+import com.drift.stream.domain.model.TorrentConfig
+import com.drift.stream.domain.model.TorrentFailReason
+import com.drift.stream.domain.usecase.TorrentSessionState
+import com.drift.stream.domain.usecase.deadlineMsFor
 import com.frostwire.jlibtorrent.AlertListener
 import com.frostwire.jlibtorrent.Priority
 import com.frostwire.jlibtorrent.SessionHandle
@@ -14,11 +19,6 @@ import com.frostwire.jlibtorrent.alerts.FileErrorAlert
 import com.frostwire.jlibtorrent.alerts.MetadataReceivedAlert
 import com.frostwire.jlibtorrent.alerts.TorrentAlert
 import com.frostwire.jlibtorrent.alerts.TorrentErrorAlert
-import com.drift.stream.di.IoDispatcher
-import com.drift.stream.domain.model.TorrentConfig
-import com.drift.stream.domain.model.TorrentFailReason
-import com.drift.stream.domain.usecase.TorrentSessionState
-import com.drift.stream.domain.usecase.deadlineMsFor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher

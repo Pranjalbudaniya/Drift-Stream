@@ -2,8 +2,8 @@ package com.drift.stream.presentation.theme
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import com.materialkolor.hct.Hct
 import com.drift.stream.presentation.theme.tokens.AccentSwatches
+import com.materialkolor.hct.Hct
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

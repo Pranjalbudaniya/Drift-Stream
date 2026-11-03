@@ -8,13 +8,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import com.materialkolor.PaletteStyle
-import com.materialkolor.dynamicColorScheme
 import com.drift.stream.domain.model.ContrastLevel
 import com.drift.stream.domain.model.ThemeMode
 import com.drift.stream.domain.model.ThemeSettings
 import com.drift.stream.presentation.theme.tokens.AmoledTokens
 import com.drift.stream.presentation.theme.tokens.BrandAccent
+import com.materialkolor.PaletteStyle
+import com.materialkolor.dynamicColorScheme
 
 fun isDarkTheme(
     mode: ThemeMode,

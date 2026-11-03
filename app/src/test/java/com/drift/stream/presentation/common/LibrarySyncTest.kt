@@ -12,6 +12,7 @@ import com.drift.stream.domain.model.Addon
 import com.drift.stream.domain.model.AddonManifest
 import com.drift.stream.domain.model.AddonSource
 import com.drift.stream.domain.model.CatalogSpec
+import com.drift.stream.domain.model.HomeRowConfig
 import com.drift.stream.domain.model.ListStatus
 import com.drift.stream.domain.model.ManifestHints
 import com.drift.stream.domain.model.MetaDetail
@@ -21,6 +22,7 @@ import com.drift.stream.domain.model.PosterShape
 import com.drift.stream.domain.model.toPreview
 import com.drift.stream.domain.repository.AddonRepository
 import com.drift.stream.domain.repository.ContentPrefsRepository
+import com.drift.stream.domain.repository.HomeRowConfigRepository
 import com.drift.stream.domain.repository.MetaRepository
 import com.drift.stream.domain.repository.MetaResult
 import com.drift.stream.domain.repository.MetaSource
@@ -40,8 +42,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -190,6 +194,14 @@ class LibrarySyncTest {
         Dispatchers.resetMain()
     }
 
+    private class FakeHomeRowConfigRepository : HomeRowConfigRepository {
+        override val config: Flow<HomeRowConfig> = flowOf(HomeRowConfig())
+
+        override suspend fun update(transform: (HomeRowConfig) -> HomeRowConfig) = Unit
+
+        override suspend fun reset() = Unit
+    }
+
     private fun createHomeViewModel(): HomeViewModel =
         HomeViewModel(
             addonRepository = addonRepository,
@@ -199,6 +211,7 @@ class LibrarySyncTest {
             progressRepository = progressRepository,
             contentPrefsRepository = contentPrefsRepository,
             dispatcher = testDispatcher,
+            homeRowConfigRepository = FakeHomeRowConfigRepository(),
         )
 
     private fun createDetailViewModel(): DetailViewModel =

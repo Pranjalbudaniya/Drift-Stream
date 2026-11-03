@@ -14,7 +14,6 @@ import com.drift.stream.domain.model.PosterMark
 import com.drift.stream.domain.model.RowState
 import com.drift.stream.domain.repository.AddonRepository
 import com.drift.stream.domain.repository.ContentPrefsRepository
-import com.drift.stream.domain.repository.EmptyHomeRowConfigRepository
 import com.drift.stream.domain.repository.HomeRowConfigRepository
 import com.drift.stream.domain.repository.LibraryRepository
 import com.drift.stream.domain.repository.ProgressRepository
@@ -120,7 +119,7 @@ class HomeViewModel
         private val progressRepository: ProgressRepository,
         private val contentPrefsRepository: ContentPrefsRepository,
         @DefaultDispatcher private val dispatcher: CoroutineDispatcher,
-        private val homeRowConfigRepository: HomeRowConfigRepository = EmptyHomeRowConfigRepository,
+        private val homeRowConfigRepository: HomeRowConfigRepository,
     ) : ViewModel() {
         private val buildHomeRows = BuildHomeRows()
         private val buildHero = BuildHero()

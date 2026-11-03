@@ -3,10 +3,12 @@
 A native Android client for Stremio addons with its own interface, a built-in torrent streaming engine and a libVLC player.
 
 <p align="center">
-  <img src="assets/screenshots/home.png" width="23%" alt="Home">
-  <img src="assets/screenshots/detail.png" width="23%" alt="Title details">
-  <img src="assets/screenshots/streams.png" width="23%" alt="Streams">
-  <img src="assets/screenshots/player.png" width="23%" alt="Player">
+  <img src="assets/screenshots/home.png" width="30%" alt="Home">
+  <img src="assets/screenshots/detail.png" width="30%" alt="Title details">
+  <img src="assets/screenshots/streams.png" width="30%" alt="Streams">
+</p>
+<p align="center">
+  <img src="assets/screenshots/player.png" width="65%" alt="Player">
 </p>
 
 ## What it is
@@ -24,10 +26,11 @@ You add stream addons yourself.
 - Streams sheet with sorting, filters and Quick play
 - Built-in torrent streaming with a cache limit and a Wi-Fi gate
 - libVLC player with gestures, audio and subtitle tracks, subtitles from addons, subtitle style and speed
+- Resume, next episode and auto-play next
 - Library with watchlist and history
 - Downloads for direct links and torrents with queue, resume and an optional move to Gallery
 - Theming (accent color, dynamic color, AMOLED, fonts, sizes, roundness)
-- Family mode
+- Family mode (on by default): hides adult addons and content
 - No ads, no analytics, no accounts
 
 ## Requirements and install

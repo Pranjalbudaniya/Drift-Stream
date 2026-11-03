@@ -55,7 +55,7 @@ class GitHubReleaseSourceTest {
                     "tag_name": "v1.0.1",
                     "name": "Version 1.0.1",
                     "body": "Release notes",
-                    "html_url": "https://github.com/Pranjalbudaniya/Nexus-Stream/releases/tag/v1.0.1",
+                    "html_url": "https://github.com/Pranjalbudaniya/Drift-Stream/releases/tag/v1.0.1",
                     "assets": [
                         { "name": "a.apk", "size": 1000, "browser_download_url": "https://github.com/a.apk" },
                         { "name": "b.apk", "size": 2000, "browser_download_url": "https://github.com/b.apk" }

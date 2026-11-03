@@ -36,7 +36,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.drift.stream.R
 import com.drift.stream.domain.model.AppError
 import com.drift.stream.domain.model.DiscoverCatalog

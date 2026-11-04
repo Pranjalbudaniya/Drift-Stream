@@ -1,6 +1,7 @@
 package com.drift.stream
 
 import android.app.Application
+import com.drift.stream.data.player.PlayerTrace
 import com.drift.stream.di.IoDispatcher
 import com.drift.stream.domain.repository.DownloadManager
 import com.drift.stream.domain.repository.UpdateManager
@@ -28,6 +29,7 @@ class NexusApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        PlayerTrace.init(this)
         CoroutineScope(ioDispatcher + SupervisorJob()).launch {
             try {
                 downloadManager.onAppStart()

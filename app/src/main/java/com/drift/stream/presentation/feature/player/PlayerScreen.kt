@@ -73,6 +73,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.drift.stream.R
+import com.drift.stream.data.player.PlayerTrace
 import com.drift.stream.domain.model.ThemeMode
 import com.drift.stream.domain.model.ThemeSettings
 import com.drift.stream.domain.usecase.NextUi
@@ -200,6 +201,7 @@ fun PlayerScreen(
     DisposableEffect(lifecycleOwner) {
         val observer =
             LifecycleEventObserver { _, event ->
+                PlayerTrace.log("life", "e" to event.name)
                 if (event == Lifecycle.Event.ON_START) {
                     viewModel.onEvent(PlayerEvent.AppStarted)
                 } else if (event == Lifecycle.Event.ON_STOP) {

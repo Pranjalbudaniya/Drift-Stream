@@ -85,6 +85,7 @@ class AndroidAudioFocusController
             synchronized(lock) {
                 val result = audioManager.requestAudioFocus(focusRequest)
                 val granted = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                PlayerTrace.log("focus.request", "result" to result, "granted" to granted)
                 if (granted) {
                     hasFocus = true
                     if (!isNoisyRegistered) {

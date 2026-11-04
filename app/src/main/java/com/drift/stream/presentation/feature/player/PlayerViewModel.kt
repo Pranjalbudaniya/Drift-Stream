@@ -9,6 +9,7 @@ import com.drift.stream.data.player.ImportResult
 import com.drift.stream.data.player.PlayerController
 import com.drift.stream.data.player.PlayerControllerFactory
 import com.drift.stream.data.player.PlayerSnapshot
+import com.drift.stream.data.player.PlayerTrace
 import com.drift.stream.data.player.PlayerTracks
 import com.drift.stream.data.player.SPEED_OPTIONS
 import com.drift.stream.data.player.SubtitleFileImporter
@@ -458,6 +459,7 @@ class PlayerViewModel
 
             viewModelScope.launch(mainDispatcher) {
                 audioFocusController.events.collect { event ->
+                    PlayerTrace.log("vm.focus", "event" to event.name, "resumeOnGain" to resumeOnGain)
                     when (event) {
                         AudioFocusEvent.LOST -> {
                             resumeOnGain = false
@@ -636,10 +638,12 @@ class PlayerViewModel
         private fun handleTogglePlay() {
             controller?.let { ctrl ->
                 if (ctrl.snapshot.value.isPlaying) {
+                    PlayerTrace.log("vm.toggle", "playing" to true, "focus" to "skipped")
                     cancelHoldSpeed()
                     ctrl.pause()
                 } else {
                     val granted = audioFocusController.request()
+                    PlayerTrace.log("vm.toggle", "playing" to false, "focus" to granted)
                     if (granted) {
                         ctrl.resume()
                     }
@@ -933,16 +937,41 @@ class PlayerViewModel
         }
 
         private fun handleAppStopped() {
+            PlayerTrace.log(
+                "vm.appStopped",
+                "playing" to controller?.snapshot?.value?.isPlaying,
+                "posMs" to controller?.snapshot?.value?.positionMs,
+            )
             cancelHoldSpeed()
+            PlayerTrace.log(
+                "vm.appStopped",
+                "playing" to controller?.snapshot?.value?.isPlaying,
+                "posMs" to controller?.snapshot?.value?.positionMs,
+            )
             controller?.let { ctrl ->
                 if (ctrl.snapshot.value.isPlaying) {
                     ctrl.pause()
+                    PlayerTrace.log(
+                        "vm.appStopped",
+                        "playing" to ctrl.snapshot.value.isPlaying,
+                        "posMs" to ctrl.snapshot.value.positionMs,
+                    )
                 }
                 ctrl.onAppBackgrounded()
+                PlayerTrace.log(
+                    "vm.appStopped",
+                    "playing" to ctrl.snapshot.value.isPlaying,
+                    "posMs" to ctrl.snapshot.value.positionMs,
+                )
             }
         }
 
         private fun handleAppStarted() {
+            PlayerTrace.log(
+                "vm.appStarted",
+                "playing" to controller?.snapshot?.value?.isPlaying,
+                "posMs" to controller?.snapshot?.value?.positionMs,
+            )
             controller?.onAppForegrounded()
         }
 

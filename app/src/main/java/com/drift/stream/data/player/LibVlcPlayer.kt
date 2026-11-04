@@ -68,6 +68,13 @@ class LibVlcPlayer(
                     _snapshot.update {
                         it.copy(isPlaying = true, isBuffering = false, rate = mediaPlayer.rate)
                     }
+                    PlayerTrace.log(
+                        "vlc.event",
+                        "type" to "Playing",
+                        "playerState" to mediaPlayer.playerState,
+                        "attached" to mediaPlayer.vlcVout.areViewsAttached(),
+                        "snapPlaying" to _snapshot.value.isPlaying,
+                    )
                     startWatchdogTicker()
                 }
 
@@ -76,6 +83,23 @@ class LibVlcPlayer(
                     _snapshot.update {
                         it.copy(isPlaying = false, rate = mediaPlayer.rate)
                     }
+                    PlayerTrace.log(
+                        "vlc.event",
+                        "type" to "Paused",
+                        "playerState" to mediaPlayer.playerState,
+                        "attached" to mediaPlayer.vlcVout.areViewsAttached(),
+                        "snapPlaying" to _snapshot.value.isPlaying,
+                    )
+                }
+
+                MediaPlayer.Event.Stopped -> {
+                    PlayerTrace.log(
+                        "vlc.event",
+                        "type" to "Stopped",
+                        "playerState" to mediaPlayer.playerState,
+                        "attached" to mediaPlayer.vlcVout.areViewsAttached(),
+                        "snapPlaying" to _snapshot.value.isPlaying,
+                    )
                 }
 
                 MediaPlayer.Event.Buffering -> {
@@ -83,6 +107,14 @@ class LibVlcPlayer(
                     _snapshot.update {
                         it.copy(isBuffering = isBuffering, rate = mediaPlayer.rate)
                     }
+                    PlayerTrace.log(
+                        "vlc.event",
+                        "type" to "Buffering",
+                        "pct" to event.buffering,
+                        "playerState" to mediaPlayer.playerState,
+                        "attached" to mediaPlayer.vlcVout.areViewsAttached(),
+                        "snapPlaying" to _snapshot.value.isPlaying,
+                    )
                 }
 
                 MediaPlayer.Event.EncounteredError -> {
@@ -91,6 +123,13 @@ class LibVlcPlayer(
                     _snapshot.update {
                         it.copy(failed = true, isPlaying = false, isBuffering = false, rate = mediaPlayer.rate)
                     }
+                    PlayerTrace.log(
+                        "vlc.event",
+                        "type" to "EncounteredError",
+                        "playerState" to mediaPlayer.playerState,
+                        "attached" to mediaPlayer.vlcVout.areViewsAttached(),
+                        "snapPlaying" to _snapshot.value.isPlaying,
+                    )
                 }
 
                 MediaPlayer.Event.EndReached -> {
@@ -99,10 +138,25 @@ class LibVlcPlayer(
                     _snapshot.update {
                         it.copy(ended = true, isPlaying = false, isBuffering = false, rate = mediaPlayer.rate)
                     }
+                    PlayerTrace.log(
+                        "vlc.event",
+                        "type" to "EndReached",
+                        "playerState" to mediaPlayer.playerState,
+                        "attached" to mediaPlayer.vlcVout.areViewsAttached(),
+                        "snapPlaying" to _snapshot.value.isPlaying,
+                    )
                 }
 
                 MediaPlayer.Event.Vout -> {
                     currentVoutCount = event.voutCount
+                    PlayerTrace.log(
+                        "vlc.event",
+                        "type" to "Vout",
+                        "voutCount" to event.voutCount,
+                        "playerState" to mediaPlayer.playerState,
+                        "attached" to mediaPlayer.vlcVout.areViewsAttached(),
+                        "snapPlaying" to _snapshot.value.isPlaying,
+                    )
                 }
 
                 MediaPlayer.Event.LengthChanged -> {
@@ -164,6 +218,7 @@ class LibVlcPlayer(
     override fun createSurface(context: Context): View {
         val layout = VLCVideoLayout(context)
         currentLayout = layout
+        PlayerTrace.log("vlc.surface", "op" to "attach", "layoutId" to System.identityHashCode(layout))
         mediaPlayer.attachViews(layout, null, true, false)
         val actions = gate.onSurfaceAttached(System.identityHashCode(layout))
         executeGateActions(actions)
@@ -172,6 +227,7 @@ class LibVlcPlayer(
 
     override fun detachSurface() {
         val layout = currentLayout
+        PlayerTrace.log("vlc.surface", "op" to "detach", "layoutId" to layout?.let { System.identityHashCode(it) })
         mediaPlayer.vlcVout.detachViews()
         if (layout != null) {
             val actions = gate.onSurfaceDetached(System.identityHashCode(layout))
@@ -202,6 +258,7 @@ class LibVlcPlayer(
 
     private fun executeGateActions(actions: List<GateAction>) {
         for (action in actions) {
+            PlayerTrace.log("vlc.gate", "action" to action::class.java.simpleName)
             when (action) {
                 is GateAction.StartPlayback -> {
                     startPlaybackInternal(action.url)
@@ -232,14 +289,32 @@ class LibVlcPlayer(
     }
 
     override fun pause() {
+        PlayerTrace.log(
+            "vlc.pause",
+            "playerState" to mediaPlayer.playerState,
+            "playing" to mediaPlayer.isPlaying,
+            "attached" to mediaPlayer.vlcVout.areViewsAttached(),
+        )
         mediaPlayer.pause()
     }
 
     override fun resume() {
+        PlayerTrace.log(
+            "vlc.resume",
+            "playerState" to mediaPlayer.playerState,
+            "playing" to mediaPlayer.isPlaying,
+            "attached" to mediaPlayer.vlcVout.areViewsAttached(),
+        )
         mediaPlayer.play()
     }
 
     override fun seekTo(positionMs: Long) {
+        PlayerTrace.log(
+            "vlc.seek",
+            "playerState" to mediaPlayer.playerState,
+            "playing" to mediaPlayer.isPlaying,
+            "attached" to mediaPlayer.vlcVout.areViewsAttached(),
+        )
         mediaPlayer.time = positionMs
     }
 
@@ -289,6 +364,7 @@ class LibVlcPlayer(
 
     override fun onAppBackgrounded() {
         val isPlaying = _snapshot.value.isPlaying
+        PlayerTrace.log("vlc.bg", "snapPlaying" to isPlaying, "mediaLoaded" to (currentMedia != null))
         val actions = gate.onBackground(isPlaying)
         executeGateActions(actions)
     }
@@ -296,6 +372,7 @@ class LibVlcPlayer(
     override fun onAppForegrounded() {
         val mediaLoaded = currentMedia != null
         val isPlaying = _snapshot.value.isPlaying
+        PlayerTrace.log("vlc.fg", "snapPlaying" to isPlaying, "mediaLoaded" to mediaLoaded)
         val actions = gate.onForeground(mediaLoaded, isPlaying)
         executeGateActions(actions)
     }
@@ -328,6 +405,9 @@ class LibVlcPlayer(
     }
 
     private fun handleWatchdogAction(action: WatchdogAction) {
+        if (action != WatchdogAction.None) {
+            PlayerTrace.log("vlc.watchdog", "action" to action::class.java.simpleName)
+        }
         when (action) {
             WatchdogAction.None -> {}
 

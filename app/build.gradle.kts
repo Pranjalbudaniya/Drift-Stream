@@ -50,7 +50,9 @@ android {
             applicationIdSuffix = ".debug"
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // While no release key is configured the release APK uses the debug keystore
             // of the building machine; every release must be built with the same key or
             // installed copies cannot be updated.

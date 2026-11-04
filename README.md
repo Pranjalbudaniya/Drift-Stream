@@ -55,7 +55,7 @@ Debug build: `./gradlew assembleDebug`
 
 Verification: `./gradlew checkAll` (assemble, unit tests, detekt, spotless, hexGuard).
 
-Release build: create `keystore.properties` in the repository root with `storeFile`, `storePassword`, `keyAlias`, and `keyPassword` (never commit it), then run `./gradlew assembleRelease`. Every release must be signed with the same key or installed copies cannot update. The version comes from `appVersionName` in `app/build.gradle.kts`.
+Release build: create `keystore.properties` in the repository root with `storeFile`, `storePassword`, `keyAlias`, and `keyPassword` (never commit it), then run `./gradlew assembleRelease`. Every release must be signed with the same key or installed copies cannot update. The version comes from `appVersionName` in `app/build.gradle.kts`. Keep `app/build/outputs/mapping/release/mapping.txt` of every published release, because crash traces from the minified app cannot be read without it.
 
 Publish: create a GitHub release tagged `v` plus the version, and attach the APK.
 

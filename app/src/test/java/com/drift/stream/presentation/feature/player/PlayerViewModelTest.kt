@@ -2610,6 +2610,71 @@ class PlayerViewModelTest {
             assertEquals(2.39f, vm.uiState.value.videoAspect)
         }
 
+    @Test
+    fun VM1_pipModeChanged_true_hidesControlsClosesDrawerCancelsHold() =
+        runTest(testDispatcher) {
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            vm.onEvent(PlayerEvent.OpenDrawer(PlayerDrawer.AUDIO))
+            vm.onEvent(PlayerEvent.HoldSpeed(true))
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.controlsVisible)
+            assertEquals(PlayerDrawer.AUDIO, vm.uiState.value.drawer)
+
+            vm.onEvent(PlayerEvent.PipModeChanged(true))
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.isInPip)
+            assertFalse(vm.uiState.value.controlsVisible)
+            assertNull(vm.uiState.value.drawer)
+            assertFalse(vm.uiState.value.holdSpeed)
+        }
+
+    @Test
+    fun VM2_pipModeChanged_false_showsControls() =
+        runTest(testDispatcher) {
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            vm.onEvent(PlayerEvent.PipModeChanged(true))
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.isInPip)
+            assertFalse(vm.uiState.value.controlsVisible)
+
+            vm.onEvent(PlayerEvent.PipModeChanged(false))
+            advanceUntilIdle()
+
+            assertFalse(vm.uiState.value.isInPip)
+            assertTrue(vm.uiState.value.controlsVisible)
+        }
+
+    @Test
+    fun VM3_appStopped_whileInPip_pausesAndSavesProgress() =
+        runTest(testDispatcher) {
+            val url = "https://example.com/video.mp4"
+            holder.start(
+                PlaybackSelection("Movie", PlaybackSource.Direct(url), "movie", "m1", "v1"),
+            )
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            val ctrl = fakeFactory.createdControllers.single()
+            ctrl.snapshotFlow.value = PlayerSnapshot(isPlaying = true, durationMs = 60_000L, positionMs = 15_000L)
+            advanceUntilIdle()
+
+            vm.onEvent(PlayerEvent.PipModeChanged(true))
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.isInPip)
+
+            vm.onEvent(PlayerEvent.AppStopped)
+            advanceUntilIdle()
+
+            assertEquals(1, ctrl.pauseCallCount)
+            coVerify { fakeSaveProgress(any(), any(), any(), any()) }
+        }
+
     private class FakePlayerController : PlayerController {
         val snapshotFlow = MutableStateFlow(PlayerSnapshot())
         override val snapshot: StateFlow<PlayerSnapshot> = snapshotFlow.asStateFlow()
@@ -2646,6 +2711,7 @@ class PlayerViewModelTest {
 
         override fun pause() {
             pauseCallCount++
+            snapshotFlow.value = snapshotFlow.value.copy(isPlaying = false)
         }
 
         override fun resume() {

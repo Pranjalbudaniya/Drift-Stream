@@ -5,8 +5,10 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.view.Window
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -57,6 +59,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -65,25 +69,33 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.PictureInPictureModeChangedInfo
+import androidx.core.util.Consumer
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.drift.stream.R
 import com.drift.stream.data.player.PlayerTrace
 import com.drift.stream.domain.model.ThemeMode
 import com.drift.stream.domain.model.ThemeSettings
 import com.drift.stream.domain.usecase.NextUi
+import com.drift.stream.domain.usecase.PipAction
+import com.drift.stream.domain.usecase.pipActions
+import com.drift.stream.domain.usecase.wantsPip
 import com.drift.stream.presentation.common.LocalPlayback
 import com.drift.stream.presentation.common.NexusButton
 import com.drift.stream.presentation.common.NexusIconButton
+import com.drift.stream.presentation.common.NexusTextButton
 import com.drift.stream.presentation.feature.streams.ExternalActions
 import com.drift.stream.presentation.theme.NexusTheme
 import com.drift.stream.presentation.theme.tokens.PlayerOverlayColors
 
+private const val MILLIS_PER_SECOND = 1000L
 private const val PICK_FILE_CARD_WIDTH_FRACTION = 0.7f
 private val PICK_FILE_LIST_MAX_HEIGHT = 200.dp
 private val NETWORK_CARD_TOP_PADDING = 64.dp
@@ -113,62 +125,62 @@ fun PlayerScreen(
     }
 
     val activity = remember(context) { context.findActivity() }
+    val componentActivity = remember(activity) { activity as? ComponentActivity }
     val window = activity?.window
 
-    val restoreChrome =
-        remember(activity, window) {
-            {
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                if (window != null) {
-                    val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-                    insetsController.show(WindowInsetsCompat.Type.systemBars())
-                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    val lp = window.attributes
-                    lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-                    window.attributes = lp
-                }
-            }
+    val pipController =
+        remember(componentActivity) {
+            componentActivity?.let { PipController(it, viewModel::onEvent) }
         }
 
+    PipModeListener(
+        componentActivity = componentActivity,
+        onPipChanged = { inPip -> viewModel.onEvent(PlayerEvent.PipModeChanged(inPip)) },
+    )
+
+    var videoBounds by remember { mutableStateOf<android.graphics.Rect?>(null) }
+    val hasMedia = playbackSessionHolder?.current?.value != null || uiState.phase !is PlayerPhase.Empty
+    val wantsPip =
+        uiState.phase.wantsPip(
+            popUpOnHome = uiState.popUpOnHome,
+            onPlayerScreen = true,
+            hasMedia = hasMedia,
+            isPlaying = uiState.isPlaying,
+            isBuffering = uiState.isBuffering,
+        )
+    val pipActionsList =
+        remember(uiState.isPlaying, uiState.seekStepMs) {
+            pipActions(
+                isPlaying = uiState.isPlaying,
+                seekStepSeconds = (uiState.seekStepMs / MILLIS_PER_SECOND).toInt(),
+            )
+        }
+
+    PipLifecycle(
+        pipController = pipController,
+        wantsPip = wantsPip,
+        aspect = uiState.videoAspect,
+        actions = pipActionsList,
+        videoBounds = videoBounds,
+    )
+
     val handleBack =
-        remember(restoreChrome, onNavigateUp) {
+        remember(activity, window, onNavigateUp) {
             {
-                restoreChrome()
+                restorePlayerChrome(activity, window)
                 onNavigateUp()
             }
         }
 
-    LaunchedEffect(viewModel, context) {
-        viewModel.effects.collect { effect ->
-            when (effect) {
-                is PlayerEffect.OpenExternal -> {
-                    ExternalActions.openVideo(
-                        context = context,
-                        url = effect.url,
-                        title = effect.title,
-                        headers = emptyMap(),
-                        onError = {
-                            Toast
-                                .makeText(
-                                    context,
-                                    context.getString(R.string.player_external_no_app),
-                                    Toast.LENGTH_SHORT,
-                                ).show()
-                        },
-                    )
-                }
-
-                PlayerEffect.SwitchToNext -> {
-                    onSwitchToNext()
-                }
-
-                is PlayerEffect.ChooseNextSource -> {
-                    isChoosingSource = true
-                    playbackLauncher.open(effect.request)
-                }
-            }
-        }
-    }
+    PlayerScreenEffects(
+        viewModel = viewModel,
+        context = context,
+        onSwitchToNext = onSwitchToNext,
+        onChooseSource = { req ->
+            isChoosingSource = true
+            playbackLauncher.open(req.request)
+        },
+    )
 
     DisposableEffect(context) {
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -180,39 +192,19 @@ fun PlayerScreen(
         }
 
         onDispose {
-            restoreChrome()
+            restorePlayerChrome(activity, window)
         }
     }
 
-    val shouldKeepScreenOn = uiState.isPlaying && uiState.phase is PlayerPhase.Playing
-    DisposableEffect(shouldKeepScreenOn, window) {
-        if (window != null) {
-            if (shouldKeepScreenOn) {
-                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            } else {
-                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            }
-        }
-        onDispose {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-    }
+    PlayerKeepScreenOn(
+        window = window,
+        shouldKeepScreenOn = uiState.isPlaying && uiState.phase is PlayerPhase.Playing,
+    )
 
-    DisposableEffect(lifecycleOwner) {
-        val observer =
-            LifecycleEventObserver { _, event ->
-                PlayerTrace.log("life", "e" to event.name)
-                if (event == Lifecycle.Event.ON_START) {
-                    viewModel.onEvent(PlayerEvent.AppStarted)
-                } else if (event == Lifecycle.Event.ON_STOP) {
-                    viewModel.onEvent(PlayerEvent.AppStopped)
-                }
-            }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
+    PlayerLifecycleObserver(
+        lifecycleOwner = lifecycleOwner,
+        onEvent = viewModel::onEvent,
+    )
 
     val subtitleFileLauncher =
         rememberLauncherForActivityResult(
@@ -260,6 +252,9 @@ fun PlayerScreen(
         onOpenExternal = { viewModel.onEvent(PlayerEvent.OpenExternal) },
         onNextTapped = { viewModel.onEvent(PlayerEvent.NextEpisodeTapped) },
         onDismissNext = { viewModel.onEvent(PlayerEvent.NextEpisodeDismissed) },
+        isPipSupported = pipController?.supported == true,
+        onEnterPip = { triggerPip(pipController, context) },
+        onVideoBoundsChanged = { videoBounds = it },
         surfaceFactory = controller?.let { ctrl -> { ctx -> ctrl.createSurface(ctx) } },
         surfaceRelease = { controller?.detachSurface() },
         modifier = modifier,
@@ -295,6 +290,9 @@ internal fun PlayerScreenContent(
     onOpenExternal: () -> Unit = {},
     onNextTapped: () -> Unit = {},
     onDismissNext: () -> Unit = {},
+    isPipSupported: Boolean = false,
+    onEnterPip: () -> Unit = {},
+    onVideoBoundsChanged: (android.graphics.Rect?) -> Unit = {},
     surfaceFactory: ((Context) -> android.view.View)? = null,
     surfaceRelease: (() -> Unit)? = null,
 ) {
@@ -313,154 +311,171 @@ internal fun PlayerScreenContent(
                 AndroidView(
                     factory = surfaceFactory,
                     onRelease = { surfaceRelease?.invoke() },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-
-            PlayerGestureLayer(
-                isActive =
-                    uiState.drawer == null &&
-                        (uiState.phase is PlayerPhase.Playing || uiState.phase is PlayerPhase.Ended),
-                isSeekable = uiState.isSeekable,
-                seekStepMs = uiState.seekStepMs,
-                holdSpeed = uiState.holdSpeed,
-                onToggleControls = onToggleControls,
-                onSeekBy = onSeekBy,
-                onHoldSpeed = onHoldSpeed,
-            )
-
-            if (showLoadingOverlay) {
-                PlayerLoadingOverlay(
-                    title = uiState.title,
-                    logoUrl = uiState.logoUrl,
-                    backgroundUrl = uiState.backgroundUrl,
-                    phase = uiState.phase,
-                    stats = uiState.stats,
-                    showArtwork = shouldShowLoadingArtwork(uiState.phase),
-                )
-            }
-
-            AnimatedVisibility(
-                visible = uiState.controlsVisible,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                PlayerControlsOverlay(
-                    uiState = uiState,
-                    showCenterPlay = !showLoadingOverlay,
-                    onNavigateUp = onNavigateUp,
-                    onTogglePlay = onTogglePlay,
-                    onSeekTo = onSeekTo,
-                    onToggleNetworkCard = onToggleNetworkCard,
-                    onOpenDrawer = onOpenDrawer,
-                    onCycleScale = onCycleScale,
-                    onOpenExternal = onOpenExternal,
-                )
-            }
-
-            AnimatedVisibility(
-                visible = uiState.scaleChipLabel != null,
-                enter = fadeIn(),
-                exit = fadeOut(),
-                modifier = Modifier.align(Alignment.Center),
-            ) {
-                uiState.scaleChipLabel?.let { label ->
-                    Card(
-                        shape = NexusTheme.shapes.chip,
-                        colors =
-                            CardDefaults.cardColors(
-                                containerColor = PlayerOverlayColors.Card,
-                            ),
-                    ) {
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.titleMedium,
-                            color = PlayerOverlayColors.Content,
-                            modifier =
-                                Modifier.padding(
-                                    horizontal = NexusTheme.spacing.lg,
-                                    vertical = NexusTheme.spacing.sm,
-                                ),
-                        )
-                    }
-                }
-            }
-
-            if (uiState.showNetworkCard && uiState.isTorrentSource) {
-                Box(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .padding(top = NETWORK_CARD_TOP_PADDING, end = NexusTheme.spacing.md),
-                    contentAlignment = Alignment.TopEnd,
-                ) {
-                    NetworkStatusCard(
-                        stats = uiState.stats,
-                        onDismiss = onDismissNetworkCard,
-                    )
-                }
-            }
-
-            if (uiState.nextUi != NextUi.None) {
-                NextEpisodeOverlay(
-                    nextUi = uiState.nextUi,
-                    nextEpisodeLabel = uiState.nextEpisodeLabel,
-                    countdownSeconds = uiState.autoPlayCountdownSeconds,
-                    onNextTapped = onNextTapped,
-                    onDismiss = onDismissNext,
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = NexusTheme.spacing.md, bottom = NEXT_EPISODE_OVERLAY_BOTTOM_PADDING),
+                            .onGloballyPositioned { coordinates ->
+                                val bounds = coordinates.boundsInWindow()
+                                val rect =
+                                    android.graphics.Rect(
+                                        bounds.left.toInt(),
+                                        bounds.top.toInt(),
+                                        bounds.right.toInt(),
+                                        bounds.bottom.toInt(),
+                                    )
+                                onVideoBoundsChanged(rect)
+                            },
                 )
             }
 
-            PlayerStateOverlay(
-                phase = uiState.phase,
-                onNavigateUp = onNavigateUp,
-                onPickFile = onPickFile,
-                onAllowMeteredOnce = onAllowMeteredOnce,
-                onRetry = onRetry,
-                modifier = Modifier.align(Alignment.Center),
-            )
+            if (!uiState.isInPip) {
+                PlayerGestureLayer(
+                    isActive =
+                        uiState.drawer == null &&
+                            (uiState.phase is PlayerPhase.Playing || uiState.phase is PlayerPhase.Ended),
+                    isSeekable = uiState.isSeekable,
+                    seekStepMs = uiState.seekStepMs,
+                    holdSpeed = uiState.holdSpeed,
+                    onToggleControls = onToggleControls,
+                    onSeekBy = onSeekBy,
+                    onHoldSpeed = onHoldSpeed,
+                )
 
-            AnimatedVisibility(
-                visible = uiState.drawer != null,
-                enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-                exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                uiState.drawer?.let { currentDrawer ->
+                if (showLoadingOverlay) {
+                    PlayerLoadingOverlay(
+                        title = uiState.title,
+                        logoUrl = uiState.logoUrl,
+                        backgroundUrl = uiState.backgroundUrl,
+                        phase = uiState.phase,
+                        stats = uiState.stats,
+                        showArtwork = shouldShowLoadingArtwork(uiState.phase),
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = uiState.controlsVisible,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    PlayerControlsOverlay(
+                        uiState = uiState,
+                        showCenterPlay = !showLoadingOverlay,
+                        onNavigateUp = onNavigateUp,
+                        onTogglePlay = onTogglePlay,
+                        onSeekTo = onSeekTo,
+                        onToggleNetworkCard = onToggleNetworkCard,
+                        onOpenDrawer = onOpenDrawer,
+                        onCycleScale = onCycleScale,
+                        onOpenExternal = onOpenExternal,
+                        isPipSupported = isPipSupported,
+                        onEnterPip = onEnterPip,
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = uiState.scaleChipLabel != null,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.Center),
+                ) {
+                    uiState.scaleChipLabel?.let { label ->
+                        Card(
+                            shape = NexusTheme.shapes.chip,
+                            colors =
+                                CardDefaults.cardColors(
+                                    containerColor = PlayerOverlayColors.Card,
+                                ),
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = PlayerOverlayColors.Content,
+                                modifier =
+                                    Modifier.padding(
+                                        horizontal = NexusTheme.spacing.lg,
+                                        vertical = NexusTheme.spacing.sm,
+                                    ),
+                            )
+                        }
+                    }
+                }
+
+                if (uiState.showNetworkCard && uiState.isTorrentSource) {
                     Box(
                         modifier =
                             Modifier
                                 .fillMaxSize()
-                                .background(PlayerOverlayColors.Scrim.copy(alpha = 0.5f))
-                                .clickable(onClick = onCloseDrawer),
-                        contentAlignment = Alignment.CenterEnd,
+                                .padding(top = NETWORK_CARD_TOP_PADDING, end = NexusTheme.spacing.md),
+                        contentAlignment = Alignment.TopEnd,
                     ) {
+                        NetworkStatusCard(
+                            stats = uiState.stats,
+                            onDismiss = onDismissNetworkCard,
+                        )
+                    }
+                }
+
+                if (uiState.nextUi != NextUi.None) {
+                    NextEpisodeOverlay(
+                        nextUi = uiState.nextUi,
+                        nextEpisodeLabel = uiState.nextEpisodeLabel,
+                        countdownSeconds = uiState.autoPlayCountdownSeconds,
+                        onNextTapped = onNextTapped,
+                        onDismiss = onDismissNext,
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = NexusTheme.spacing.md, bottom = NEXT_EPISODE_OVERLAY_BOTTOM_PADDING),
+                    )
+                }
+
+                PlayerStateOverlay(
+                    phase = uiState.phase,
+                    onNavigateUp = onNavigateUp,
+                    onPickFile = onPickFile,
+                    onAllowMeteredOnce = onAllowMeteredOnce,
+                    onRetry = onRetry,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+
+                AnimatedVisibility(
+                    visible = uiState.drawer != null,
+                    enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+                    exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    uiState.drawer?.let { currentDrawer ->
                         Box(
-                            modifier = Modifier.clickable(enabled = false) {},
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(PlayerOverlayColors.Scrim.copy(alpha = 0.5f))
+                                    .clickable(onClick = onCloseDrawer),
+                            contentAlignment = Alignment.CenterEnd,
                         ) {
-                            PlayerSidePanel(
-                                drawer = currentDrawer,
-                                tracks = uiState.tracks,
-                                currentRate = uiState.rate,
-                                subtitleDelayMs = uiState.subtitleDelayMs,
-                                onlineSubtitles = uiState.onlineSubtitles,
-                                applyingSubtitleKey = uiState.applyingSubtitleKey,
-                                subtitleError = uiState.subtitleError,
-                                onSetSpeed = onSetSpeed,
-                                onSelectAudio = onSelectAudio,
-                                onSelectSubtitle = onSelectSubtitle,
-                                onSelectOnlineSubtitle = onSelectOnlineSubtitle,
-                                onRefreshOnlineSubtitles = onRefreshOnlineSubtitles,
-                                onAddSubtitleFile = onAddSubtitleFile,
-                                onSubtitleDelay = onSubtitleDelay,
-                                onResetSubtitleDelay = onResetSubtitleDelay,
-                                onClose = onCloseDrawer,
-                            )
+                            Box(
+                                modifier = Modifier.clickable(enabled = false) {},
+                            ) {
+                                PlayerSidePanel(
+                                    drawer = currentDrawer,
+                                    tracks = uiState.tracks,
+                                    currentRate = uiState.rate,
+                                    subtitleDelayMs = uiState.subtitleDelayMs,
+                                    onlineSubtitles = uiState.onlineSubtitles,
+                                    applyingSubtitleKey = uiState.applyingSubtitleKey,
+                                    subtitleError = uiState.subtitleError,
+                                    onSetSpeed = onSetSpeed,
+                                    onSelectAudio = onSelectAudio,
+                                    onSelectSubtitle = onSelectSubtitle,
+                                    onSelectOnlineSubtitle = onSelectOnlineSubtitle,
+                                    onRefreshOnlineSubtitles = onRefreshOnlineSubtitles,
+                                    onAddSubtitleFile = onAddSubtitleFile,
+                                    onSubtitleDelay = onSubtitleDelay,
+                                    onResetSubtitleDelay = onResetSubtitleDelay,
+                                    onClose = onCloseDrawer,
+                                )
+                            }
                         }
                     }
                 }
@@ -480,6 +495,8 @@ private fun PlayerControlsOverlay(
     onOpenDrawer: (PlayerDrawer) -> Unit,
     onCycleScale: () -> Unit,
     onOpenExternal: () -> Unit,
+    isPipSupported: Boolean = false,
+    onEnterPip: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -552,6 +569,18 @@ private fun PlayerControlsOverlay(
                     contentDescription = stringResource(R.string.player_action_video_scale),
                     tint = PlayerOverlayColors.Content,
                 )
+            }
+            if (isPipSupported) {
+                Spacer(modifier = Modifier.width(NexusTheme.spacing.sm))
+                NexusTextButton(
+                    onClick = onEnterPip,
+                ) {
+                    Text(
+                        text = stringResource(R.string.pip_pop_up),
+                        color = PlayerOverlayColors.Content,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(NexusTheme.spacing.sm))
             NexusIconButton(
@@ -854,13 +883,6 @@ private fun PlayerErrorOverlay(
         }
     }
 }
-
-internal tailrec fun Context.findActivity(): Activity? =
-    when (this) {
-        is Activity -> this
-        is ContextWrapper -> baseContext.findActivity()
-        else -> null
-    }
 
 @Preview(name = "Player Controls Light", showBackground = true)
 @Composable

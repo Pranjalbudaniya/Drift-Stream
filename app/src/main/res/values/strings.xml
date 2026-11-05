@@ -820,6 +820,12 @@
     <string name="settings_player_auto_play_next_desc">Starts the next episode a few seconds after one ends</string>
     <string name="settings_pop_up_title">Pop-up on Home</string>
     <string name="settings_pop_up_summary">Keep the video playing in a small window when you press Home.</string>
+    <string name="pip_pop_up">Pop-up</string>
+    <string name="pip_pop_up_unavailable">Pop-up is turned off for Drift Stream in the system settings.</string>
+    <string name="pip_action_back">Rewind</string>
+    <string name="pip_action_back_desc">Rewind %1$d seconds</string>
+    <string name="pip_action_forward">Fast forward</string>
+    <string name="pip_action_forward_desc">Fast forward %1$d seconds</string>
 
     <!-- Update strings P13c -->
     <string name="update_title">Updates</string>

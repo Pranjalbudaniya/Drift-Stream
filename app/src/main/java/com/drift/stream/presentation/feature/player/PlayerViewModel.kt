@@ -205,6 +205,7 @@ data class PlayerUiState(
     val autoPlayCountdownSeconds: Int? = null,
     val videoAspect: Float? = null,
     val popUpOnHome: Boolean = true,
+    val isInPip: Boolean = false,
 ) {
     override fun toString(): String =
         "PlayerUiState(title=$title, phase=$phase, pos=$positionMs, dur=$durationMs, " +
@@ -215,7 +216,7 @@ data class PlayerUiState(
             "subtitleDelayMs=$subtitleDelayMs, onlineSubsState=${onlineSubtitles::class.simpleName}, " +
             "applyingSubtitleKey=$applyingSubtitleKey, subtitleError=$subtitleError, " +
             "nextUi=$nextUi, nextEpisodeLabel=$nextEpisodeLabel, countdown=$autoPlayCountdownSeconds, " +
-            "videoAspect=$videoAspect, popUpOnHome=$popUpOnHome)"
+            "videoAspect=$videoAspect, popUpOnHome=$popUpOnHome, isInPip=$isInPip)"
 }
 
 sealed interface PlayerEvent {
@@ -234,6 +235,10 @@ sealed interface PlayerEvent {
     ) : PlayerEvent
 
     data object ToggleControls : PlayerEvent
+
+    data class PipModeChanged(
+        val inPip: Boolean,
+    ) : PlayerEvent
 
     data object AppStopped : PlayerEvent
 
@@ -525,10 +530,37 @@ class PlayerViewModel
         fun getController(): PlayerController? = controller
 
         fun onEvent(event: PlayerEvent) {
-            if (!handleDrawerAndTrackEvent(event) && !handleSubtitleEvent(event) && !handleNextEpisodeEvent(event)) {
+            if (!handleNonPlaybackEvent(event)) {
                 handlePlaybackEvent(event)
             }
         }
+
+        private fun handleNonPlaybackEvent(event: PlayerEvent): Boolean {
+            val handledUi = handleDrawerAndTrackEvent(event) || handleSubtitleEvent(event)
+            return handledUi || handleNextEpisodeEvent(event) || handleLifecycleAndPipEvent(event)
+        }
+
+        private fun handleLifecycleAndPipEvent(event: PlayerEvent): Boolean =
+            when (event) {
+                PlayerEvent.AppStopped -> {
+                    handleAppStopped()
+                    true
+                }
+
+                PlayerEvent.AppStarted -> {
+                    handleAppStarted()
+                    true
+                }
+
+                is PlayerEvent.PipModeChanged -> {
+                    handlePipModeChanged(event.inPip)
+                    true
+                }
+
+                else -> {
+                    false
+                }
+            }
 
         private fun handleNextEpisodeEvent(event: PlayerEvent): Boolean =
             when (event) {
@@ -633,14 +665,32 @@ class PlayerViewModel
                 is PlayerEvent.SeekBy -> handleSeekBy(event.deltaMs)
                 is PlayerEvent.HoldSpeed -> handleHoldSpeed(event.active)
                 PlayerEvent.ToggleControls -> handleToggleControls()
-                PlayerEvent.AppStopped -> handleAppStopped()
-                PlayerEvent.AppStarted -> handleAppStarted()
                 is PlayerEvent.PickFile -> handlePickFile(event.index)
                 PlayerEvent.AllowMeteredOnce -> handleAllowMeteredOnce()
                 PlayerEvent.Retry -> handleRetry()
                 PlayerEvent.ToggleNetworkCard -> handleToggleNetworkCard()
                 PlayerEvent.DismissNetworkCard -> handleDismissNetworkCard()
                 else -> Unit
+            }
+        }
+
+        private fun handlePipModeChanged(inPip: Boolean) {
+            if (inPip) {
+                cancelHoldSpeed()
+                _uiState.update {
+                    it.copy(
+                        isInPip = true,
+                        controlsVisible = false,
+                        drawer = null,
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isInPip = false,
+                        controlsVisible = true,
+                    )
+                }
             }
         }
 

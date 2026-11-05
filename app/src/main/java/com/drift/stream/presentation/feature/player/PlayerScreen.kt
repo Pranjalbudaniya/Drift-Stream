@@ -90,7 +90,6 @@ import com.drift.stream.domain.usecase.wantsPip
 import com.drift.stream.presentation.common.LocalPlayback
 import com.drift.stream.presentation.common.NexusButton
 import com.drift.stream.presentation.common.NexusIconButton
-import com.drift.stream.presentation.common.NexusTextButton
 import com.drift.stream.presentation.feature.streams.ExternalActions
 import com.drift.stream.presentation.theme.NexusTheme
 import com.drift.stream.presentation.theme.tokens.PlayerOverlayColors
@@ -142,7 +141,7 @@ fun PlayerScreen(
     val hasMedia = playbackSessionHolder?.current?.value != null || uiState.phase !is PlayerPhase.Empty
     val wantsPip =
         uiState.phase.wantsPip(
-            popUpOnHome = uiState.popUpOnHome,
+            pipOnHome = uiState.pipOnHome,
             onPlayerScreen = true,
             hasMedia = hasMedia,
             isPlaying = uiState.isPlaying,
@@ -572,13 +571,13 @@ private fun PlayerControlsOverlay(
             }
             if (isPipSupported) {
                 Spacer(modifier = Modifier.width(NexusTheme.spacing.sm))
-                NexusTextButton(
+                NexusIconButton(
                     onClick = onEnterPip,
                 ) {
-                    Text(
-                        text = stringResource(R.string.pip_pop_up),
-                        color = PlayerOverlayColors.Content,
-                        style = MaterialTheme.typography.labelLarge,
+                    Icon(
+                        painter = painterResource(R.drawable.ic_picture_in_picture),
+                        contentDescription = stringResource(R.string.pip_button_desc),
+                        tint = PlayerOverlayColors.Content,
                     )
                 }
             }

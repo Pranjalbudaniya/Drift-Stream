@@ -26,7 +26,7 @@ data class SettingsUiState(
     val hideCam: Boolean = false,
     val seekStepSeconds: Int = 10,
     val autoPlayNext: Boolean = true,
-    val popUpOnHome: Boolean = true,
+    val pipOnHome: Boolean = true,
     val preferredAudioLanguage: String? = null,
     val preferredSubtitleLanguage: String? = null,
     val subtitleStyle: SubtitleStyle = SubtitleStyle(),
@@ -41,7 +41,7 @@ sealed interface SettingsEvent {
         val enabled: Boolean,
     ) : SettingsEvent
 
-    data class SetPopUpOnHome(
+    data class SetPipOnHome(
         val enabled: Boolean,
     ) : SettingsEvent
 
@@ -101,7 +101,7 @@ private data class PlayerSettings(
     val hideCam: Boolean,
     val seekStepSeconds: Int,
     val autoPlayNext: Boolean,
-    val popUpOnHome: Boolean,
+    val pipOnHome: Boolean,
 )
 
 private data class GeneralPlayerPrefs(
@@ -140,8 +140,8 @@ class SettingsViewModel
                 generalPlayerFlow,
                 playerPrefsRepository.seekStepSeconds,
                 playerPrefsRepository.autoPlayNext,
-                playerPrefsRepository.popUpOnHome,
-            ) { general, seekStepSeconds, autoPlayNext, popUpOnHome ->
+                playerPrefsRepository.pipOnHome,
+            ) { general, seekStepSeconds, autoPlayNext, pipOnHome ->
                 PlayerSettings(
                     quickPlay = general.quickPlay,
                     preferredLanguage = general.preferredLanguage,
@@ -149,7 +149,7 @@ class SettingsViewModel
                     hideCam = general.hideCam,
                     seekStepSeconds = seekStepSeconds,
                     autoPlayNext = autoPlayNext,
-                    popUpOnHome = popUpOnHome,
+                    pipOnHome = pipOnHome,
                 )
             }
 
@@ -179,7 +179,7 @@ class SettingsViewModel
                     hideCam = player.hideCam,
                     seekStepSeconds = player.seekStepSeconds,
                     autoPlayNext = player.autoPlayNext,
-                    popUpOnHome = player.popUpOnHome,
+                    pipOnHome = player.pipOnHome,
                     preferredAudioLanguage = subPrefs.preferredAudioLanguage,
                     preferredSubtitleLanguage = subPrefs.preferredSubtitleLanguage,
                     subtitleStyle = subPrefs.subtitleStyle,
@@ -233,8 +233,8 @@ class SettingsViewModel
                     true
                 }
 
-                is SettingsEvent.SetPopUpOnHome -> {
-                    viewModelScope.launch { playerPrefsRepository.setPopUpOnHome(event.enabled) }
+                is SettingsEvent.SetPipOnHome -> {
+                    viewModelScope.launch { playerPrefsRepository.setPipOnHome(event.enabled) }
                     true
                 }
 

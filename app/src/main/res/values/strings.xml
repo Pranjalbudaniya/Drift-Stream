@@ -818,10 +818,10 @@
     <string name="player_next_a11y">Next episode, season %1$d episode %2$d</string>
     <string name="settings_player_auto_play_next">Play next episode automatically</string>
     <string name="settings_player_auto_play_next_desc">Starts the next episode a few seconds after one ends</string>
-    <string name="settings_pop_up_title">Pop-up on Home</string>
-    <string name="settings_pop_up_summary">Keep the video playing in a small window when you press Home.</string>
-    <string name="pip_pop_up">Pop-up</string>
-    <string name="pip_pop_up_unavailable">Pop-up is turned off for Drift Stream in the system settings.</string>
+    <string name="settings_pip_title">Picture in picture</string>
+    <string name="settings_pip_summary">Keep the video playing in a small window when you press Home.</string>
+    <string name="pip_button_desc">Picture in picture</string>
+    <string name="pip_unavailable">Picture in picture is turned off for Drift Stream in the system settings.</string>
     <string name="pip_action_back">Rewind</string>
     <string name="pip_action_back_desc">Rewind %1$d seconds</string>
     <string name="pip_action_forward">Fast forward</string>

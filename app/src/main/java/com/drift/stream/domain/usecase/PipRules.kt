@@ -34,12 +34,12 @@ fun pipAspect(aspect: Float?): Pair<Int, Int> {
 }
 
 fun PlayerPhase.wantsPip(
-    popUpOnHome: Boolean,
+    pipOnHome: Boolean,
     onPlayerScreen: Boolean,
     hasMedia: Boolean,
     isPlaying: Boolean,
     isBuffering: Boolean,
-): Boolean = popUpOnHome && onPlayerScreen && hasMedia && this is PlayerPhase.Playing && (isPlaying || isBuffering)
+): Boolean = pipOnHome && onPlayerScreen && hasMedia && this is PlayerPhase.Playing && (isPlaying || isBuffering)
 
 fun pipActions(
     isPlaying: Boolean,

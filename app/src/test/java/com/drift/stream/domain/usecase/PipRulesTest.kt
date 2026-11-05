@@ -36,7 +36,7 @@ class PipRulesTest {
         // Base case: all conditions true -> true
         assertTrue(
             PlayerPhase.Playing.wantsPip(
-                popUpOnHome = true,
+                pipOnHome = true,
                 onPlayerScreen = true,
                 hasMedia = true,
                 isPlaying = true,
@@ -47,7 +47,7 @@ class PipRulesTest {
         // Setting off
         assertFalse(
             PlayerPhase.Playing.wantsPip(
-                popUpOnHome = false,
+                pipOnHome = false,
                 onPlayerScreen = true,
                 hasMedia = true,
                 isPlaying = true,
@@ -58,7 +58,7 @@ class PipRulesTest {
         // Not on player screen
         assertFalse(
             PlayerPhase.Playing.wantsPip(
-                popUpOnHome = true,
+                pipOnHome = true,
                 onPlayerScreen = false,
                 hasMedia = true,
                 isPlaying = true,
@@ -69,7 +69,7 @@ class PipRulesTest {
         // No media
         assertFalse(
             PlayerPhase.Playing.wantsPip(
-                popUpOnHome = true,
+                pipOnHome = true,
                 onPlayerScreen = true,
                 hasMedia = false,
                 isPlaying = true,
@@ -80,7 +80,7 @@ class PipRulesTest {
         // Phase not Playing
         assertFalse(
             PlayerPhase.Empty.wantsPip(
-                popUpOnHome = true,
+                pipOnHome = true,
                 onPlayerScreen = true,
                 hasMedia = true,
                 isPlaying = true,
@@ -91,7 +91,7 @@ class PipRulesTest {
         // Neither playing nor buffering
         assertFalse(
             PlayerPhase.Playing.wantsPip(
-                popUpOnHome = true,
+                pipOnHome = true,
                 onPlayerScreen = true,
                 hasMedia = true,
                 isPlaying = false,
@@ -104,7 +104,7 @@ class PipRulesTest {
     fun PR6_wantsPip_bufferingCounts() {
         assertTrue(
             PlayerPhase.Playing.wantsPip(
-                popUpOnHome = true,
+                pipOnHome = true,
                 onPlayerScreen = true,
                 hasMedia = true,
                 isPlaying = false,

@@ -57,10 +57,10 @@ class PlayerPrefsRepositoryImpl
                     prefs[KEY_AUTO_PLAY_NEXT] ?: true
                 }.distinctUntilChanged()
 
-        override val popUpOnHome: Flow<Boolean> =
+        override val pipOnHome: Flow<Boolean> =
             safeData
                 .map { prefs ->
-                    prefs[KEY_POP_UP_ON_HOME] ?: true
+                    prefs[KEY_PIP_ON_HOME] ?: true
                 }.distinctUntilChanged()
 
         override val sort: Flow<StreamSort> =
@@ -259,16 +259,16 @@ class PlayerPrefsRepositoryImpl
             }
         }
 
-        override suspend fun setPopUpOnHome(enabled: Boolean) {
+        override suspend fun setPipOnHome(enabled: Boolean) {
             dataStore.edit { prefs ->
-                prefs[KEY_POP_UP_ON_HOME] = enabled
+                prefs[KEY_PIP_ON_HOME] = enabled
             }
         }
 
         companion object {
             val KEY_QUICK_PLAY = booleanPreferencesKey("quick_play")
             val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
-            val KEY_POP_UP_ON_HOME = booleanPreferencesKey("pop_up_on_home")
+            val KEY_PIP_ON_HOME = booleanPreferencesKey("pip_on_home")
             val KEY_STREAM_SORT = stringPreferencesKey("stream_sort")
             val KEY_PREFERRED_LANGUAGE = stringPreferencesKey("preferred_language")
             val KEY_PREFERRED_QUALITY = intPreferencesKey("preferred_quality")

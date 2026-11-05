@@ -333,18 +333,18 @@ class PlayerPrefsRepositoryImplTest {
         }
 
     @Test
-    fun PREF1_popUpOnHome_defaultsToTrue() =
+    fun PREF1_pipOnHome_defaultsToTrue() =
         runTest {
-            val (repo, _) = createRepository(this, "popup_default.preferences_pb")
-            assertTrue(repo.popUpOnHome.first())
+            val (repo, _) = createRepository(this, "pip_default.preferences_pb")
+            assertTrue(repo.pipOnHome.first())
         }
 
     @Test
-    fun PREF2_popUpOnHome_persistsFalse() =
+    fun PREF2_pipOnHome_persistsFalse() =
         runTest {
-            val (repo, _) = createRepository(this, "popup_persists.preferences_pb")
-            assertTrue(repo.popUpOnHome.first())
-            repo.setPopUpOnHome(false)
-            assertFalse(repo.popUpOnHome.first())
+            val (repo, _) = createRepository(this, "pip_persists.preferences_pb")
+            assertTrue(repo.pipOnHome.first())
+            repo.setPipOnHome(false)
+            assertFalse(repo.pipOnHome.first())
         }
 }

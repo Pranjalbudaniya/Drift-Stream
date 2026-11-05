@@ -204,7 +204,7 @@ data class PlayerUiState(
     val nextEpisodeLabel: Pair<Int, Int>? = null,
     val autoPlayCountdownSeconds: Int? = null,
     val videoAspect: Float? = null,
-    val popUpOnHome: Boolean = true,
+    val pipOnHome: Boolean = true,
     val isInPip: Boolean = false,
 ) {
     override fun toString(): String =
@@ -216,7 +216,7 @@ data class PlayerUiState(
             "subtitleDelayMs=$subtitleDelayMs, onlineSubsState=${onlineSubtitles::class.simpleName}, " +
             "applyingSubtitleKey=$applyingSubtitleKey, subtitleError=$subtitleError, " +
             "nextUi=$nextUi, nextEpisodeLabel=$nextEpisodeLabel, countdown=$autoPlayCountdownSeconds, " +
-            "videoAspect=$videoAspect, popUpOnHome=$popUpOnHome, isInPip=$isInPip)"
+            "videoAspect=$videoAspect, pipOnHome=$pipOnHome, isInPip=$isInPip)"
 }
 
 sealed interface PlayerEvent {
@@ -521,8 +521,8 @@ class PlayerViewModel
             }
 
             viewModelScope.launch(mainDispatcher) {
-                playerPrefsRepository.popUpOnHome.collect { enabled ->
-                    _uiState.update { it.copy(popUpOnHome = enabled) }
+                playerPrefsRepository.pipOnHome.collect { enabled ->
+                    _uiState.update { it.copy(pipOnHome = enabled) }
                 }
             }
         }

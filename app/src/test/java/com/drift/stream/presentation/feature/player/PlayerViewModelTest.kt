@@ -2814,15 +2814,15 @@ class PlayerViewModelTest {
         override val subtitleStyle: Flow<com.drift.stream.domain.model.SubtitleStyle> = subtitleStyleFlow
         val autoPlayNextFlow = MutableStateFlow(true)
         override val autoPlayNext: Flow<Boolean> = autoPlayNextFlow
-        val popUpOnHomeFlow = MutableStateFlow(true)
-        override val popUpOnHome: Flow<Boolean> = popUpOnHomeFlow
+        val pipOnHomeFlow = MutableStateFlow(true)
+        override val pipOnHome: Flow<Boolean> = pipOnHomeFlow
 
         override suspend fun setAutoPlayNext(enabled: Boolean) {
             autoPlayNextFlow.value = enabled
         }
 
-        override suspend fun setPopUpOnHome(enabled: Boolean) {
-            popUpOnHomeFlow.value = enabled
+        override suspend fun setPipOnHome(enabled: Boolean) {
+            pipOnHomeFlow.value = enabled
         }
 
         override suspend fun setQuickPlay(enabled: Boolean) {

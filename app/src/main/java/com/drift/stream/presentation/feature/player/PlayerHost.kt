@@ -174,6 +174,6 @@ internal fun triggerPip(
 ) {
     val entered = pipController?.enterNow() == true
     if (!entered) {
-        Toast.makeText(context, R.string.pip_pop_up_unavailable, Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, R.string.pip_unavailable, Toast.LENGTH_SHORT).show()
     }
 }

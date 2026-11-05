@@ -659,10 +659,10 @@ private fun PlayerSectionCard(
         )
 
         SettingsSwitchRow(
-            title = stringResource(R.string.settings_pop_up_title),
-            subtitle = stringResource(R.string.settings_pop_up_summary),
-            checked = uiState.popUpOnHome,
-            onCheckedChange = { onEvent(SettingsEvent.SetPopUpOnHome(it)) },
+            title = stringResource(R.string.settings_pip_title),
+            subtitle = stringResource(R.string.settings_pip_summary),
+            checked = uiState.pipOnHome,
+            onCheckedChange = { onEvent(SettingsEvent.SetPipOnHome(it)) },
         )
     }
 }

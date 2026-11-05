@@ -26,6 +26,7 @@ data class SettingsUiState(
     val hideCam: Boolean = false,
     val seekStepSeconds: Int = 10,
     val autoPlayNext: Boolean = true,
+    val popUpOnHome: Boolean = true,
     val preferredAudioLanguage: String? = null,
     val preferredSubtitleLanguage: String? = null,
     val subtitleStyle: SubtitleStyle = SubtitleStyle(),
@@ -37,6 +38,10 @@ sealed interface SettingsEvent {
     ) : SettingsEvent
 
     data class SetAutoPlayNext(
+        val enabled: Boolean,
+    ) : SettingsEvent
+
+    data class SetPopUpOnHome(
         val enabled: Boolean,
     ) : SettingsEvent
 
@@ -96,6 +101,7 @@ private data class PlayerSettings(
     val hideCam: Boolean,
     val seekStepSeconds: Int,
     val autoPlayNext: Boolean,
+    val popUpOnHome: Boolean,
 )
 
 private data class GeneralPlayerPrefs(
@@ -134,7 +140,8 @@ class SettingsViewModel
                 generalPlayerFlow,
                 playerPrefsRepository.seekStepSeconds,
                 playerPrefsRepository.autoPlayNext,
-            ) { general, seekStepSeconds, autoPlayNext ->
+                playerPrefsRepository.popUpOnHome,
+            ) { general, seekStepSeconds, autoPlayNext, popUpOnHome ->
                 PlayerSettings(
                     quickPlay = general.quickPlay,
                     preferredLanguage = general.preferredLanguage,
@@ -142,6 +149,7 @@ class SettingsViewModel
                     hideCam = general.hideCam,
                     seekStepSeconds = seekStepSeconds,
                     autoPlayNext = autoPlayNext,
+                    popUpOnHome = popUpOnHome,
                 )
             }
 
@@ -171,6 +179,7 @@ class SettingsViewModel
                     hideCam = player.hideCam,
                     seekStepSeconds = player.seekStepSeconds,
                     autoPlayNext = player.autoPlayNext,
+                    popUpOnHome = player.popUpOnHome,
                     preferredAudioLanguage = subPrefs.preferredAudioLanguage,
                     preferredSubtitleLanguage = subPrefs.preferredSubtitleLanguage,
                     subtitleStyle = subPrefs.subtitleStyle,
@@ -221,6 +230,11 @@ class SettingsViewModel
 
                 is SettingsEvent.SetAutoPlayNext -> {
                     viewModelScope.launch { playerPrefsRepository.setAutoPlayNext(event.enabled) }
+                    true
+                }
+
+                is SettingsEvent.SetPopUpOnHome -> {
+                    viewModelScope.launch { playerPrefsRepository.setPopUpOnHome(event.enabled) }
                     true
                 }
 

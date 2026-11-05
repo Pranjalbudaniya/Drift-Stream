@@ -203,6 +203,8 @@ data class PlayerUiState(
     val nextUi: NextUi = NextUi.None,
     val nextEpisodeLabel: Pair<Int, Int>? = null,
     val autoPlayCountdownSeconds: Int? = null,
+    val videoAspect: Float? = null,
+    val popUpOnHome: Boolean = true,
 ) {
     override fun toString(): String =
         "PlayerUiState(title=$title, phase=$phase, pos=$positionMs, dur=$durationMs, " +
@@ -212,7 +214,8 @@ data class PlayerUiState(
             "rate=$rate, scale=$scale, drawer=$drawer, canOpenExternal=$canOpenExternal, " +
             "subtitleDelayMs=$subtitleDelayMs, onlineSubsState=${onlineSubtitles::class.simpleName}, " +
             "applyingSubtitleKey=$applyingSubtitleKey, subtitleError=$subtitleError, " +
-            "nextUi=$nextUi, nextEpisodeLabel=$nextEpisodeLabel, countdown=$autoPlayCountdownSeconds)"
+            "nextUi=$nextUi, nextEpisodeLabel=$nextEpisodeLabel, countdown=$autoPlayCountdownSeconds, " +
+            "videoAspect=$videoAspect, popUpOnHome=$popUpOnHome)"
 }
 
 sealed interface PlayerEvent {
@@ -509,6 +512,12 @@ class PlayerViewModel
                     if (!initialScaleApplied) {
                         _uiState.update { it.copy(scale = scale) }
                     }
+                }
+            }
+
+            viewModelScope.launch(mainDispatcher) {
+                playerPrefsRepository.popUpOnHome.collect { enabled ->
+                    _uiState.update { it.copy(popUpOnHome = enabled) }
                 }
             }
         }
@@ -1248,6 +1257,11 @@ class PlayerViewModel
             viewModelScope.launch(mainDispatcher) {
                 ctrl.snapshot.collect { snap ->
                     handleSnapshotUpdate(ctrl, snap)
+                }
+            }
+            viewModelScope.launch(mainDispatcher) {
+                ctrl.videoAspect.collect { aspect ->
+                    _uiState.update { it.copy(videoAspect = aspect) }
                 }
             }
         }

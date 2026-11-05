@@ -50,6 +50,7 @@ class SettingsViewModelTest {
                 .SubtitleStyle(),
         )
     private val autoPlayNextFlow = MutableStateFlow(true)
+    private val popUpOnHomeFlow = MutableStateFlow(true)
     private val addonsFlow = MutableStateFlow<List<Addon>>(emptyList())
 
     private val adultAddon =
@@ -123,6 +124,7 @@ class SettingsViewModelTest {
         every { playerPrefsRepository.preferredSubtitleLanguage } returns preferredSubtitleLanguageFlow
         every { playerPrefsRepository.subtitleStyle } returns subtitleStyleFlow
         every { playerPrefsRepository.autoPlayNext } returns autoPlayNextFlow
+        every { playerPrefsRepository.popUpOnHome } returns popUpOnHomeFlow
         every { addonRepository.observeAll() } returns addonsFlow
     }
 
@@ -365,5 +367,30 @@ class SettingsViewModelTest {
             viewModel.onEvent(SettingsEvent.SetSeekStepSeconds(30))
             advanceUntilIdle()
             coVerify(exactly = 1) { playerPrefsRepository.setSeekStepSeconds(30) }
+        }
+
+    @Test
+    fun SET1_settingsState_exposesPopUpOnHome() =
+        runTest {
+            val viewModel = SettingsViewModel(contentPrefsRepository, playerPrefsRepository, addonRepository)
+            advanceUntilIdle()
+
+            assertTrue(viewModel.uiState.value.popUpOnHome)
+
+            popUpOnHomeFlow.value = false
+            advanceUntilIdle()
+            assertFalse(viewModel.uiState.value.popUpOnHome)
+        }
+
+    @Test
+    fun SET2_setPopUpOnHome_writesRepository() =
+        runTest {
+            val viewModel = SettingsViewModel(contentPrefsRepository, playerPrefsRepository, addonRepository)
+            advanceUntilIdle()
+
+            viewModel.onEvent(SettingsEvent.SetPopUpOnHome(false))
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { playerPrefsRepository.setPopUpOnHome(false) }
         }
 }

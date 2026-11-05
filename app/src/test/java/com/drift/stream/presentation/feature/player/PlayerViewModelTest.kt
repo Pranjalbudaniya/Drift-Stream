@@ -2469,6 +2469,7 @@ class PlayerViewModelTest {
             val mockController = mockk<PlayerController>(relaxed = true)
             coEvery { mockController.snapshot } returns MutableStateFlow(PlayerSnapshot())
             coEvery { mockController.tracks } returns MutableStateFlow(PlayerTracks())
+            coEvery { mockController.videoAspect } returns MutableStateFlow(null)
             fakeFactory.nextController = mockController
 
             holder.start(
@@ -2590,12 +2591,34 @@ class PlayerViewModelTest {
         assertEquals("https://poster.jpg", targetWithMeta?.poster)
     }
 
+    @Test
+    fun VM4_videoAspect_fromController_appearsInState() =
+        runTest(testDispatcher) {
+            val url = "https://example.com/video.mp4"
+            holder.start(
+                PlaybackSelection("Movie", PlaybackSource.Direct(url), "movie", "m1", "v1"),
+            )
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            val ctrl = fakeFactory.createdControllers.single()
+            assertNull(vm.uiState.value.videoAspect)
+
+            ctrl.videoAspectFlow.value = 2.39f
+            advanceUntilIdle()
+
+            assertEquals(2.39f, vm.uiState.value.videoAspect)
+        }
+
     private class FakePlayerController : PlayerController {
         val snapshotFlow = MutableStateFlow(PlayerSnapshot())
         override val snapshot: StateFlow<PlayerSnapshot> = snapshotFlow.asStateFlow()
 
         val tracksFlow = MutableStateFlow(PlayerTracks())
         override val tracks: StateFlow<PlayerTracks> = tracksFlow.asStateFlow()
+
+        val videoAspectFlow = MutableStateFlow<Float?>(null)
+        override val videoAspect: StateFlow<Float?> = videoAspectFlow.asStateFlow()
 
         val playedUrls = mutableListOf<String>()
         var pauseCallCount = 0
@@ -2725,9 +2748,15 @@ class PlayerViewModelTest {
         override val subtitleStyle: Flow<com.drift.stream.domain.model.SubtitleStyle> = subtitleStyleFlow
         val autoPlayNextFlow = MutableStateFlow(true)
         override val autoPlayNext: Flow<Boolean> = autoPlayNextFlow
+        val popUpOnHomeFlow = MutableStateFlow(true)
+        override val popUpOnHome: Flow<Boolean> = popUpOnHomeFlow
 
         override suspend fun setAutoPlayNext(enabled: Boolean) {
             autoPlayNextFlow.value = enabled
+        }
+
+        override suspend fun setPopUpOnHome(enabled: Boolean) {
+            popUpOnHomeFlow.value = enabled
         }
 
         override suspend fun setQuickPlay(enabled: Boolean) {

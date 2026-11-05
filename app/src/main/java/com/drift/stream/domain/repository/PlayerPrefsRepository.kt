@@ -8,7 +8,7 @@ import com.drift.stream.domain.model.SubtitleSize
 import com.drift.stream.domain.model.SubtitleStyle
 import kotlinx.coroutines.flow.Flow
 
-// Repository interface exposes 16 flows and setters for player and subtitle preferences.
+// Repository interface exposes 17 flows and setters for player and subtitle preferences.
 @Suppress("TooManyFunctions")
 interface PlayerPrefsRepository {
     val quickPlay: Flow<Boolean>
@@ -22,6 +22,7 @@ interface PlayerPrefsRepository {
     val preferredSubtitleLanguage: Flow<String?>
     val subtitleStyle: Flow<SubtitleStyle>
     val autoPlayNext: Flow<Boolean>
+    val popUpOnHome: Flow<Boolean>
 
     suspend fun setQuickPlay(enabled: Boolean)
 
@@ -52,4 +53,6 @@ interface PlayerPrefsRepository {
     suspend fun setSubtitleBold(bold: Boolean)
 
     suspend fun setAutoPlayNext(enabled: Boolean)
+
+    suspend fun setPopUpOnHome(enabled: Boolean)
 }

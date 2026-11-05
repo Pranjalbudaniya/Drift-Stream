@@ -657,6 +657,13 @@ private fun PlayerSectionCard(
             checked = uiState.autoPlayNext,
             onCheckedChange = { onEvent(SettingsEvent.SetAutoPlayNext(it)) },
         )
+
+        SettingsSwitchRow(
+            title = stringResource(R.string.settings_pop_up_title),
+            subtitle = stringResource(R.string.settings_pop_up_summary),
+            checked = uiState.popUpOnHome,
+            onCheckedChange = { onEvent(SettingsEvent.SetPopUpOnHome(it)) },
+        )
     }
 }
 

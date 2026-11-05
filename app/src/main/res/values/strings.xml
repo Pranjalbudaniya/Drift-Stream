@@ -818,6 +818,8 @@
     <string name="player_next_a11y">Next episode, season %1$d episode %2$d</string>
     <string name="settings_player_auto_play_next">Play next episode automatically</string>
     <string name="settings_player_auto_play_next_desc">Starts the next episode a few seconds after one ends</string>
+    <string name="settings_pop_up_title">Pop-up on Home</string>
+    <string name="settings_pop_up_summary">Keep the video playing in a small window when you press Home.</string>
 
     <!-- Update strings P13c -->
     <string name="update_title">Updates</string>

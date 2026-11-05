@@ -331,4 +331,20 @@ class PlayerPrefsRepositoryImplTest {
             repo.setAutoPlayNext(true)
             assertTrue(repo.autoPlayNext.first())
         }
+
+    @Test
+    fun PREF1_popUpOnHome_defaultsToTrue() =
+        runTest {
+            val (repo, _) = createRepository(this, "popup_default.preferences_pb")
+            assertTrue(repo.popUpOnHome.first())
+        }
+
+    @Test
+    fun PREF2_popUpOnHome_persistsFalse() =
+        runTest {
+            val (repo, _) = createRepository(this, "popup_persists.preferences_pb")
+            assertTrue(repo.popUpOnHome.first())
+            repo.setPopUpOnHome(false)
+            assertFalse(repo.popUpOnHome.first())
+        }
 }

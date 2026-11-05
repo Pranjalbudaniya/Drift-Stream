@@ -19,6 +19,7 @@ data class PlayerSnapshot(
 interface PlayerController {
     val snapshot: StateFlow<PlayerSnapshot>
     val tracks: StateFlow<PlayerTracks>
+    val videoAspect: StateFlow<Float?>
 
     fun createSurface(context: Context): View // returns the video view and attaches it
 

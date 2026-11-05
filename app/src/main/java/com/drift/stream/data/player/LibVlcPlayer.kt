@@ -50,6 +50,9 @@ class LibVlcPlayer(
     private val _tracks = MutableStateFlow(PlayerTracks())
     override val tracks: StateFlow<PlayerTracks> = _tracks.asStateFlow()
 
+    private val _videoAspect = MutableStateFlow<Float?>(null)
+    override val videoAspect: StateFlow<Float?> = _videoAspect.asStateFlow()
+
     private var currentMedia: Media? = null
     private var currentMediaUrl: String? = null
     private var currentLayout: VLCVideoLayout? = null
@@ -157,6 +160,9 @@ class LibVlcPlayer(
                         "attached" to mediaPlayer.vlcVout.areViewsAttached(),
                         "snapPlaying" to _snapshot.value.isPlaying,
                     )
+                    if (event.voutCount > 0) {
+                        refreshTracks()
+                    }
                 }
 
                 MediaPlayer.Event.LengthChanged -> {
@@ -213,6 +219,18 @@ class LibVlcPlayer(
                 selectedAudioId = selectedAudio,
                 selectedSubtitleId = selectedSpu,
             )
+
+        val currentVideo = mediaPlayer.currentVideoTrack
+        if (currentVideo != null && currentVideo.height > 0) {
+            val sarNum = if (currentVideo.sarNum <= 0) 1 else currentVideo.sarNum
+            val sarDen = if (currentVideo.sarDen <= 0) 1 else currentVideo.sarDen
+            val aspect =
+                (currentVideo.width.toFloat() * sarNum.toFloat()) /
+                    (currentVideo.height.toFloat() * sarDen.toFloat())
+            if (aspect > 0f && !aspect.isNaN() && !aspect.isInfinite()) {
+                _videoAspect.value = aspect
+            }
+        }
     }
 
     override fun createSurface(context: Context): View {
@@ -244,6 +262,7 @@ class LibVlcPlayer(
         currentMediaUrl = url
         currentVoutCount = 0
         hardwareDecoding = true
+        _videoAspect.value = null
         watchdog.onNewMedia()
         val oldMedia = currentMedia
         val media = Media(libVlc, Uri.parse(url))
@@ -447,6 +466,7 @@ class LibVlcPlayer(
 
     override fun release() {
         if (released.compareAndSet(false, true)) {
+            _videoAspect.value = null
             stopWatchdogTicker()
             gate.onReleased()
             currentLayout = null

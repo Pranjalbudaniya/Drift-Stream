@@ -18,7 +18,7 @@ android {
         minSdk = 31
         targetSdk = 36
         // Version rule: versionCode = major * 10000 + minor * 100 + patch
-        val appVersionName = "1.0.1"
+        val appVersionName = "1.1.0"
         val versionParts = appVersionName.split(".").map { it.toInt() }
         versionCode = versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]
         versionName = appVersionName

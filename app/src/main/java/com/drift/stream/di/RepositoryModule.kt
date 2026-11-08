@@ -5,6 +5,8 @@ import com.drift.stream.data.local.prefs.ContentPrefsRepositoryImpl
 import com.drift.stream.data.local.prefs.PlayerPrefsRepositoryImpl
 import com.drift.stream.data.local.prefs.SettingsRepositoryImpl
 import com.drift.stream.data.local.prefs.TorrentPrefsRepositoryImpl
+import com.drift.stream.data.profile.ActiveProfileHolder
+import com.drift.stream.data.profile.ProfileRepositoryImpl
 import com.drift.stream.data.repository.AddonRepositoryImpl
 import com.drift.stream.data.repository.CommunityAddonsRepositoryImpl
 import com.drift.stream.data.repository.LibraryRepositoryImpl
@@ -13,6 +15,7 @@ import com.drift.stream.data.repository.ProgressRepositoryImpl
 import com.drift.stream.data.repository.SearchHistoryRepositoryImpl
 import com.drift.stream.data.repository.StreamRepositoryImpl
 import com.drift.stream.domain.model.PlaybackCapabilities
+import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.AddonRepository
 import com.drift.stream.domain.repository.AppStateRepository
 import com.drift.stream.domain.repository.CommunityAddonsRepository
@@ -20,6 +23,7 @@ import com.drift.stream.domain.repository.ContentPrefsRepository
 import com.drift.stream.domain.repository.LibraryRepository
 import com.drift.stream.domain.repository.MetaRepository
 import com.drift.stream.domain.repository.PlayerPrefsRepository
+import com.drift.stream.domain.repository.ProfileRepository
 import com.drift.stream.domain.repository.ProgressRepository
 import com.drift.stream.domain.repository.SearchHistoryRepository
 import com.drift.stream.domain.repository.SettingsRepository
@@ -83,6 +87,14 @@ interface RepositoryModule {
     @Binds
     @Singleton
     fun bindSearchHistoryRepository(impl: SearchHistoryRepositoryImpl): SearchHistoryRepository
+
+    @Binds
+    @Singleton
+    fun bindProfileRepository(impl: ProfileRepositoryImpl): ProfileRepository
+
+    @Binds
+    @Singleton
+    fun bindActiveProfileProvider(impl: ActiveProfileHolder): ActiveProfileProvider
 
     companion object {
         @Provides

@@ -43,4 +43,10 @@ class FakeAddonDao : AddonDao {
         current[transportUrl] = existing.copy(enabled = enabled)
         addons.value = current
     }
+
+    override suspend fun deleteAllForProfile(profileId: Long) {
+        val current = addons.value.toMutableMap()
+        current.values.removeAll { it.profileId == profileId }
+        addons.value = current
+    }
 }

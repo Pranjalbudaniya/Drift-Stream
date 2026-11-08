@@ -124,5 +124,9 @@ class SearchHistoryRepositoryTest {
         override suspend fun deleteAll() {
             entries.value = emptyList()
         }
+
+        override suspend fun deleteAllForProfile(profileId: Long) {
+            entries.update { list -> list.filterNot { it.profileId == profileId } }
+        }
     }
 }

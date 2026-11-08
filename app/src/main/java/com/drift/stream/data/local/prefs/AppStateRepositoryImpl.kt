@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.longPreferencesKey
 import com.drift.stream.domain.repository.AppStateRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -39,7 +40,26 @@ class AppStateRepositoryImpl
             }
         }
 
+        override val lastActiveProfileId: Flow<Long?> =
+            dataStore.data
+                .catch { exception ->
+                    if (exception is IOException || exception is CorruptionException) {
+                        emit(emptyPreferences())
+                    } else {
+                        throw exception
+                    }
+                }.map { prefs ->
+                    prefs[LAST_ACTIVE_PROFILE_ID_KEY]
+                }.distinctUntilChanged()
+
+        override suspend fun setLastActiveProfileId(id: Long) {
+            dataStore.edit { prefs ->
+                prefs[LAST_ACTIVE_PROFILE_ID_KEY] = id
+            }
+        }
+
         companion object {
             val DEFAULT_ADDONS_SEEDED_KEY = booleanPreferencesKey("default_addons_seeded")
+            val LAST_ACTIVE_PROFILE_ID_KEY = longPreferencesKey("last_active_profile_id")
         }
     }

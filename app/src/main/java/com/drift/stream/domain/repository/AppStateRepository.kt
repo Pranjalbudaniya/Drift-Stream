@@ -6,4 +6,8 @@ interface AppStateRepository {
     val defaultAddonsSeeded: Flow<Boolean>
 
     suspend fun markDefaultAddonsSeeded()
+
+    val lastActiveProfileId: Flow<Long?>
+
+    suspend fun setLastActiveProfileId(id: Long)
 }

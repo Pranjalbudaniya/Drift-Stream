@@ -35,6 +35,13 @@ class EnsureDefaultAddonsTest {
         override suspend fun markDefaultAddonsSeeded() {
             seededState.value = true
         }
+
+        private val lastActiveProfileState = MutableStateFlow<Long?>(null)
+        override val lastActiveProfileId: Flow<Long?> = lastActiveProfileState
+
+        override suspend fun setLastActiveProfileId(id: Long) {
+            lastActiveProfileState.value = id
+        }
     }
 
     private val sampleAddon =

@@ -52,6 +52,8 @@ class HistoryRepositoryImplTest {
             override suspend fun deleteAll() {
                 deleteAllCalledCount++
             }
+
+            override suspend fun deleteAllForProfile(profileId: Long) = error("unused")
         }
 
     private lateinit var repository: HistoryRepositoryImpl

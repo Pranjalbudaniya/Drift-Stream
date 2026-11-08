@@ -114,6 +114,11 @@ class DownloadRepositoryImplTest {
             table.remove(id)
             sync()
         }
+
+        override suspend fun deleteAllForProfile(profileId: Long) {
+            table.values.removeAll { it.profileId == profileId }
+            sync()
+        }
     }
 
     private fun createItem(

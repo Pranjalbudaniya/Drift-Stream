@@ -27,4 +27,10 @@ class FakeLibraryDao : LibraryDao {
         current[entity.metaId] = entity
         items.value = current
     }
+
+    override suspend fun deleteAllForProfile(profileId: Long) {
+        val current = items.value.toMutableMap()
+        current.values.removeAll { it.profileId == profileId }
+        items.value = current
+    }
 }

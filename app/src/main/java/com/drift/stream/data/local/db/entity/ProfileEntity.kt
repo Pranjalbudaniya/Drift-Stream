@@ -18,4 +18,3 @@ data class ProfileEntity(
     val lastUsedAt: Long,
     val sortOrder: Int,
 )
-

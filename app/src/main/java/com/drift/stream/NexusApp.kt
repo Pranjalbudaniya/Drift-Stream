@@ -2,6 +2,7 @@ package com.drift.stream
 
 import android.app.Application
 import com.drift.stream.data.player.PlayerTrace
+import com.drift.stream.data.profile.ProfileBootstrapper
 import com.drift.stream.di.IoDispatcher
 import com.drift.stream.domain.repository.DownloadManager
 import com.drift.stream.domain.repository.UpdateManager
@@ -24,13 +25,18 @@ class NexusApp : Application() {
     lateinit var updateManager: UpdateManager
 
     @Inject
+    lateinit var profileBootstrapper: ProfileBootstrapper
+
+    @Inject
     @IoDispatcher
     lateinit var ioDispatcher: CoroutineDispatcher
 
     override fun onCreate() {
         super.onCreate()
         PlayerTrace.init(this)
-        CoroutineScope(ioDispatcher + SupervisorJob()).launch {
+        val appScope = CoroutineScope(ioDispatcher + SupervisorJob())
+        profileBootstrapper.start(appScope)
+        appScope.launch {
             try {
                 downloadManager.onAppStart()
                 updateManager.onAppStart()

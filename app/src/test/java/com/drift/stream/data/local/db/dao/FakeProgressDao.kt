@@ -167,4 +167,10 @@ class FakeProgressDao(
         progressEntities.value = emptyMap()
         continueRows.value = emptyList()
     }
+
+    override suspend fun deleteAllForProfile(profileId: Long) {
+        val current = progressEntities.value.toMutableMap()
+        current.values.removeAll { it.profileId == profileId }
+        progressEntities.value = current
+    }
 }

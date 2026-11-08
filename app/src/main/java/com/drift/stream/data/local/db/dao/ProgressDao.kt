@@ -99,4 +99,7 @@ interface ProgressDao {
 
     @Query("DELETE FROM watch_progress")
     suspend fun deleteAll()
+
+    @Query("DELETE FROM watch_progress WHERE profileId = :profileId")
+    suspend fun deleteAllForProfile(profileId: Long)
 }

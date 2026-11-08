@@ -24,4 +24,7 @@ interface LibraryDao {
 
     @Upsert
     suspend fun upsert(entity: LibraryItemEntity)
+
+    @Query("DELETE FROM library_items WHERE profileId = :profileId")
+    suspend fun deleteAllForProfile(profileId: Long)
 }

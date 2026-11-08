@@ -1,11 +1,14 @@
 package com.drift.stream.data.local.db.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 
-@Entity(tableName = "watch_progress")
+@Entity(
+    tableName = "watch_progress",
+    primaryKeys = ["profileId", "key"],
+)
 data class WatchProgressEntity(
-    @PrimaryKey val key: String,
+    val key: String,
     val metaId: String,
     val videoId: String,
     val type: String,
@@ -15,4 +18,5 @@ data class WatchProgressEntity(
     val durationMs: Long,
     val watched: Boolean,
     val updatedAt: Long,
+    @ColumnInfo(defaultValue = "1") val profileId: Long = 1L,
 )

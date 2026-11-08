@@ -32,4 +32,7 @@ interface AddonDao {
         transportUrl: String,
         enabled: Boolean,
     )
+
+    @Query("DELETE FROM addons WHERE profileId = :profileId")
+    suspend fun deleteAllForProfile(profileId: Long)
 }

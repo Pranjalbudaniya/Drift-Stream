@@ -1,18 +1,19 @@
 package com.drift.stream.data.local.db.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
-import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "downloads",
+    primaryKeys = ["profileId", "id"],
     indices = [
         Index(value = ["metaId", "videoId"]),
         Index(value = ["state"]),
     ],
 )
 data class DownloadEntity(
-    @PrimaryKey val id: String,
+    val id: String,
     val kind: String,
     val url: String?,
     val headersJson: String?,
@@ -44,4 +45,5 @@ data class DownloadEntity(
     val completedAt: Long?,
     val galleryUri: String? = null,
     val galleryState: String = "NONE",
+    @ColumnInfo(defaultValue = "1") val profileId: Long = 1L,
 )

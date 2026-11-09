@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.drift.stream.data.player.VideoScale
 import com.drift.stream.data.player.parseVideoScale
+import com.drift.stream.di.PersonalSettingsStore
 import com.drift.stream.domain.model.StreamSort
 import com.drift.stream.domain.model.SubtitleBackground
 import com.drift.stream.domain.model.SubtitleEdge
@@ -33,7 +34,7 @@ import javax.inject.Singleton
 class PlayerPrefsRepositoryImpl
     @Inject
     constructor(
-        private val dataStore: DataStore<Preferences>,
+        @PersonalSettingsStore private val dataStore: DataStore<Preferences>,
     ) : PlayerPrefsRepository {
         private val safeData: Flow<Preferences> =
             dataStore.data

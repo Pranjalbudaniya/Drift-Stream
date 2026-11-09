@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.drift.stream.di.PersonalSettingsStore
 import com.drift.stream.domain.model.AppFont
 import com.drift.stream.domain.model.CardStyle
 import com.drift.stream.domain.model.ContrastLevel
@@ -30,7 +31,7 @@ import javax.inject.Singleton
 class SettingsRepositoryImpl
     @Inject
     constructor(
-        private val dataStore: DataStore<Preferences>,
+        @PersonalSettingsStore private val dataStore: DataStore<Preferences>,
     ) : SettingsRepository {
         override val themeSettings: Flow<ThemeSettings> =
             dataStore.data

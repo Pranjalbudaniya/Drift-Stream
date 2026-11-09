@@ -1,24 +1,19 @@
 package com.drift.stream.di
 
-import android.content.Context
 import androidx.datastore.core.DataStore
-import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.emptyPreferences
-import androidx.datastore.preferences.preferencesDataStoreFile
+import com.drift.stream.data.profile.PersonalStore
+import com.drift.stream.data.profile.ProfileDataStores
+import com.drift.stream.data.profile.ProfileScopedDataStore
 import com.drift.stream.data.repository.HomeRowConfigRepositoryImpl
 import com.drift.stream.data.repository.HomeRowsDataStore
+import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.HomeRowConfigRepository
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import javax.inject.Singleton
 
 @Module
@@ -33,12 +28,13 @@ interface HomeRowConfigModule {
         @Singleton
         @HomeRowsDataStore
         fun provideHomeRowsDataStore(
-            @ApplicationContext context: Context,
+            stores: ProfileDataStores,
+            activeProfileProvider: ActiveProfileProvider,
         ): DataStore<Preferences> =
-            PreferenceDataStoreFactory.create(
-                corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
-                scope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
-                produceFile = { context.preferencesDataStoreFile("home_rows") },
+            ProfileScopedDataStore(
+                kind = PersonalStore.HOME_ROWS,
+                stores = stores,
+                active = activeProfileProvider,
             )
     }
 }

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import com.drift.stream.di.PersonalSettingsStore
 import com.drift.stream.domain.repository.ContentPrefsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -19,7 +20,7 @@ import javax.inject.Singleton
 class ContentPrefsRepositoryImpl
     @Inject
     constructor(
-        private val dataStore: DataStore<Preferences>,
+        @PersonalSettingsStore private val dataStore: DataStore<Preferences>,
     ) : ContentPrefsRepository {
         override val familyMode: Flow<Boolean> =
             dataStore.data

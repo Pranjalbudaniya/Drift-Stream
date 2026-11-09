@@ -3,6 +3,7 @@ package com.drift.stream.data.repository
 import com.drift.stream.data.local.db.dao.ProgressDao
 import com.drift.stream.data.local.db.entity.WatchProgressEntity
 import com.drift.stream.domain.model.ContinueRow
+import com.drift.stream.testutil.FakeActiveProfileProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -19,37 +20,56 @@ class HistoryRepositoryImplTest {
 
     private val fakeDao =
         object : ProgressDao {
-            override fun observeContinueRows(): Flow<List<ContinueRow>> = error("unused")
+            override fun observeContinueRows(profileId: Long): Flow<List<ContinueRow>> = error("unused")
 
-            override suspend fun get(key: String): WatchProgressEntity? = error("unused")
+            override suspend fun get(
+                profileId: Long,
+                key: String,
+            ): WatchProgressEntity? = error("unused")
 
             override suspend fun upsert(entity: WatchProgressEntity) = error("unused")
 
             override suspend fun upsertAll(entities: List<WatchProgressEntity>) = error("unused")
 
-            override suspend fun deleteByMeta(metaId: String) {
+            override suspend fun deleteByMeta(
+                profileId: Long,
+                metaId: String,
+            ) {
                 deletedMetaId = metaId
             }
 
-            override fun observeByMeta(metaId: String): Flow<List<WatchProgressEntity>> = error("unused")
+            override fun observeByMeta(
+                profileId: Long,
+                metaId: String,
+            ): Flow<List<WatchProgressEntity>> = error("unused")
 
-            override suspend fun deleteByKey(key: String) = error("unused")
+            override suspend fun deleteByKey(
+                profileId: Long,
+                key: String,
+            ) = error("unused")
 
             override suspend fun clearWatched(
+                profileId: Long,
                 metaId: String,
                 videoIds: List<String>,
             ) = error("unused")
 
-            override suspend fun clearInProgress(metaId: String) = error("unused")
+            override suspend fun clearInProgress(
+                profileId: Long,
+                metaId: String,
+            ) = error("unused")
 
-            override fun observeWatchedMovieIds(): Flow<List<String>> = error("unused")
+            override fun observeWatchedMovieIds(profileId: Long): Flow<List<String>> = error("unused")
 
-            override fun observeHistoryRows(limit: Int): Flow<List<ContinueRow>> {
+            override fun observeHistoryRows(
+                profileId: Long,
+                limit: Int,
+            ): Flow<List<ContinueRow>> {
                 lastRequestedLimit = limit
                 return historyRowsFlow
             }
 
-            override suspend fun deleteAll() {
+            override suspend fun deleteAll(profileId: Long) {
                 deleteAllCalledCount++
             }
 
@@ -60,7 +80,7 @@ class HistoryRepositoryImplTest {
 
     @Before
     fun setup() {
-        repository = HistoryRepositoryImpl(fakeDao)
+        repository = HistoryRepositoryImpl(fakeDao, FakeActiveProfileProvider(1L))
     }
 
     private fun createRow(
@@ -120,7 +140,7 @@ class HistoryRepositoryImplTest {
     fun HR4_observeHistory_passesTheLimitToTheDao() =
         runTest {
             val flow = repository.observeHistory(500)
-            assertEquals(500, lastRequestedLimit)
             assertEquals(emptyList<ContinueRow>(), flow.first())
+            assertEquals(500, lastRequestedLimit)
         }
 }

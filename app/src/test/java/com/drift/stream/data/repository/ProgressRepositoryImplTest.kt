@@ -11,7 +11,7 @@ import com.drift.stream.domain.model.EpisodeRef
 import com.drift.stream.domain.model.ListStatus
 import com.drift.stream.domain.model.MetaPreview
 import com.drift.stream.domain.model.PosterShape
-import com.drift.stream.domain.usecase.ContinueWatchingRules
+import com.drift.stream.testutil.FakeActiveProfileProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -27,7 +27,6 @@ class ProgressRepositoryImplTest {
     private val fakeDao = FakeProgressDao()
     private val fakeLibraryDao = FakeLibraryDao()
     private val testDispatcher = UnconfinedTestDispatcher()
-    private val rules = ContinueWatchingRules()
     private var currentTime = 1000L
 
     private val transactionRunner =
@@ -39,8 +38,8 @@ class ProgressRepositoryImplTest {
         ProgressRepositoryImpl(
             progressDao = fakeDao,
             libraryDao = fakeLibraryDao,
+            activeProfile = FakeActiveProfileProvider(1L),
             transactionRunner = transactionRunner,
-            continueWatchingRules = rules,
             dispatcher = testDispatcher,
             clock = { currentTime },
         )

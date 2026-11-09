@@ -17,6 +17,7 @@ import com.drift.stream.domain.usecase.SaveProgress
 import com.drift.stream.presentation.common.buildPlaybackRequest
 import com.drift.stream.presentation.feature.player.PlaybackSelection
 import com.drift.stream.presentation.feature.player.toProgressTarget
+import com.drift.stream.testutil.FakeActiveProfileProvider
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -46,8 +47,8 @@ class ProgressPlaybackContractTest {
         ProgressRepositoryImpl(
             progressDao = fakeProgressDao,
             libraryDao = fakeLibraryDao,
+            activeProfile = FakeActiveProfileProvider(1L),
             transactionRunner = transactionRunner,
-            continueWatchingRules = ContinueWatchingRules(),
             dispatcher = testDispatcher,
             clock = { currentTime },
         )
@@ -55,6 +56,7 @@ class ProgressPlaybackContractTest {
     private val libraryRepo =
         LibraryRepositoryImpl(
             libraryDao = fakeLibraryDao,
+            activeProfile = FakeActiveProfileProvider(1L),
             transactionRunner = transactionRunner,
             dispatcher = testDispatcher,
             clock = { currentTime },

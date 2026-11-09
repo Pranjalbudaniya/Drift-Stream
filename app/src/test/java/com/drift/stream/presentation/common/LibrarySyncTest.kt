@@ -34,6 +34,7 @@ import com.drift.stream.presentation.feature.detail.DetailViewModel
 import com.drift.stream.presentation.feature.home.HomeEvent
 import com.drift.stream.presentation.feature.home.HomeViewModel
 import com.drift.stream.presentation.feature.player.PlaybackSessionHolder
+import com.drift.stream.testutil.FakeActiveProfileProvider
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -161,6 +162,7 @@ class LibrarySyncTest {
         libraryRepository =
             LibraryRepositoryImpl(
                 libraryDao = fakeLibraryDao,
+                activeProfile = FakeActiveProfileProvider(1L),
                 transactionRunner = passThroughRunner,
                 dispatcher = testDispatcher,
                 scope = repoScope,
@@ -170,8 +172,8 @@ class LibrarySyncTest {
             ProgressRepositoryImpl(
                 progressDao = fakeProgressDao,
                 libraryDao = fakeLibraryDao,
+                activeProfile = FakeActiveProfileProvider(1L),
                 transactionRunner = passThroughRunner,
-                continueWatchingRules = ContinueWatchingRules(),
                 dispatcher = testDispatcher,
             )
 
@@ -367,6 +369,7 @@ class LibrarySyncTest {
             val recreatedRepo =
                 LibraryRepositoryImpl(
                     libraryDao = fakeLibraryDao,
+                    activeProfile = FakeActiveProfileProvider(1L),
                     transactionRunner = passThroughRunner,
                     dispatcher = testDispatcher,
                     scope = recreatedScope,

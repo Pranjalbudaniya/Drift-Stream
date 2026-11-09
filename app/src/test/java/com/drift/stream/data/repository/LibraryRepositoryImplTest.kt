@@ -5,6 +5,7 @@ import com.drift.stream.data.local.db.dao.FakeLibraryDao
 import com.drift.stream.domain.model.ListStatus
 import com.drift.stream.domain.model.MetaPreview
 import com.drift.stream.domain.model.PosterShape
+import com.drift.stream.testutil.FakeActiveProfileProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -28,6 +29,7 @@ class LibraryRepositoryImplTest {
     private val repository =
         LibraryRepositoryImpl(
             libraryDao = fakeDao,
+            activeProfile = FakeActiveProfileProvider(1L),
             transactionRunner = passThroughRunner,
             dispatcher = testDispatcher,
             clock = { currentTime },

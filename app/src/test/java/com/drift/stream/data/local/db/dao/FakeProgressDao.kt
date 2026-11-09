@@ -16,15 +16,31 @@ class FakeProgressDao(
     val deletedMetaIds = mutableListOf<String>()
     val deletedKeys = mutableListOf<String>()
 
-    override fun observeContinueRows(): Flow<List<ContinueRow>> {
+    private fun progressKey(
+        profileId: Long,
+        key: String,
+    ): String = if (profileId == 1L) key else "$profileId|$key"
+
+    override fun observeContinueRows(profileId: Long): Flow<List<ContinueRow>> {
         val libDao = libraryDao
         if (libDao != null) {
             return combine(progressEntities, libDao.items) { progressMap, libraryMap ->
-                val byMeta = progressMap.values.groupBy { it.metaId }
+                val profileProgress = progressMap.values.filter { it.profileId == profileId }
+                val byMeta = profileProgress.groupBy { it.metaId }
                 byMeta.values
                     .mapNotNull { rows ->
                         val newest = rows.maxByOrNull { it.updatedAt } ?: return@mapNotNull null
-                        val libraryItem = libraryMap[newest.metaId]
+                        val libraryItem =
+                            libraryMap[
+                                if (newest.profileId ==
+                                    1L
+                                ) {
+                                    newest.metaId
+                                } else {
+                                    "${newest.profileId}|${newest.metaId}"
+                                },
+                            ]
+                                ?: libraryMap["${newest.profileId}|${newest.metaId}"]
                         ContinueRow(
                             metaId = newest.metaId,
                             type = newest.type,
@@ -50,59 +66,81 @@ class FakeProgressDao(
         return continueRows
     }
 
-    override suspend fun get(key: String): WatchProgressEntity? = progressEntities.value[key]
+    override suspend fun get(
+        profileId: Long,
+        key: String,
+    ): WatchProgressEntity? =
+        progressEntities.value[progressKey(profileId, key)] ?: progressEntities.value["$profileId|$key"]
+
+    suspend fun get(key: String): WatchProgressEntity? = get(1L, key)
 
     override suspend fun upsert(entity: WatchProgressEntity) {
         val current = progressEntities.value.toMutableMap()
-        current[entity.key] = entity
+        current[progressKey(entity.profileId, entity.key)] = entity
         progressEntities.value = current
     }
 
     override suspend fun upsertAll(entities: List<WatchProgressEntity>) {
         val current = progressEntities.value.toMutableMap()
         for (entity in entities) {
-            current[entity.key] = entity
+            current[progressKey(entity.profileId, entity.key)] = entity
         }
         progressEntities.value = current
     }
 
-    override suspend fun deleteByMeta(metaId: String) {
+    override suspend fun deleteByMeta(
+        profileId: Long,
+        metaId: String,
+    ) {
         deletedMetaIds.add(metaId)
         val current = progressEntities.value.toMutableMap()
-        current.entries.removeIf { it.value.metaId == metaId }
+        current.entries.removeIf { it.value.profileId == profileId && it.value.metaId == metaId }
         progressEntities.value = current
 
         continueRows.value = continueRows.value.filter { it.metaId != metaId }
     }
 
-    override fun observeByMeta(metaId: String): Flow<List<WatchProgressEntity>> =
+    override fun observeByMeta(
+        profileId: Long,
+        metaId: String,
+    ): Flow<List<WatchProgressEntity>> =
         progressEntities.map { map ->
-            map.values.filter { it.metaId == metaId }
+            map.values.filter { it.profileId == profileId && it.metaId == metaId }
         }
 
-    override suspend fun deleteByKey(key: String) {
+    override suspend fun deleteByKey(
+        profileId: Long,
+        key: String,
+    ) {
         deletedKeys.add(key)
         val current = progressEntities.value.toMutableMap()
-        current.remove(key)
+        current.remove(progressKey(profileId, key))
+        current.entries.removeIf { it.value.profileId == profileId && it.value.key == key }
         progressEntities.value = current
     }
 
     override suspend fun clearWatched(
+        profileId: Long,
         metaId: String,
         videoIds: List<String>,
     ) {
         deletedKeys.addAll(videoIds.map { "$metaId|$it" })
         val current = progressEntities.value.toMutableMap()
-        current.entries.removeIf { it.value.metaId == metaId && it.value.videoId in videoIds }
+        current.entries.removeIf {
+            it.value.profileId == profileId && it.value.metaId == metaId && it.value.videoId in videoIds
+        }
         progressEntities.value = current
     }
 
-    override suspend fun clearInProgress(metaId: String) {
+    override suspend fun clearInProgress(
+        profileId: Long,
+        metaId: String,
+    ) {
         val current = progressEntities.value.toMutableMap()
-        current.entries.removeIf { it.value.metaId == metaId && !it.value.watched }
+        current.entries.removeIf { it.value.profileId == profileId && it.value.metaId == metaId && !it.value.watched }
         progressEntities.value = current
 
-        val remainingForMeta = current.values.filter { it.metaId == metaId }
+        val remainingForMeta = current.values.filter { it.profileId == profileId && it.metaId == metaId }
         val newest = remainingForMeta.maxByOrNull { it.updatedAt }
         val existingRow = continueRows.value.firstOrNull { it.metaId == metaId }
         val updatedList = continueRows.value.filter { it.metaId != metaId }.toMutableList()
@@ -122,22 +160,36 @@ class FakeProgressDao(
         continueRows.value = updatedList
     }
 
-    override fun observeWatchedMovieIds(): Flow<List<String>> =
+    override fun observeWatchedMovieIds(profileId: Long): Flow<List<String>> =
         progressEntities.map { map ->
             map.values
-                .filter { it.watched && it.type.equals("movie", ignoreCase = true) }
+                .filter { it.profileId == profileId && it.watched && it.type.equals("movie", ignoreCase = true) }
                 .map { it.metaId }
         }
 
-    override fun observeHistoryRows(limit: Int): Flow<List<ContinueRow>> {
+    override fun observeHistoryRows(
+        profileId: Long,
+        limit: Int,
+    ): Flow<List<ContinueRow>> {
         val libDao = libraryDao
         if (libDao != null) {
             return combine(progressEntities, libDao.items) { progressMap, libraryMap ->
-                val byMeta = progressMap.values.groupBy { it.metaId }
+                val profileProgress = progressMap.values.filter { it.profileId == profileId }
+                val byMeta = profileProgress.groupBy { it.metaId }
                 byMeta.values
                     .mapNotNull { rows ->
                         val newest = rows.maxByOrNull { it.updatedAt } ?: return@mapNotNull null
-                        val libraryItem = libraryMap[newest.metaId]
+                        val libraryItem =
+                            libraryMap[
+                                if (newest.profileId ==
+                                    1L
+                                ) {
+                                    newest.metaId
+                                } else {
+                                    "${newest.profileId}|${newest.metaId}"
+                                },
+                            ]
+                                ?: libraryMap["${newest.profileId}|${newest.metaId}"]
                         ContinueRow(
                             metaId = newest.metaId,
                             type = newest.type,
@@ -163,14 +215,14 @@ class FakeProgressDao(
         return continueRows.map { it.take(limit) }
     }
 
-    override suspend fun deleteAll() {
-        progressEntities.value = emptyMap()
+    override suspend fun deleteAll(profileId: Long) {
+        val current = progressEntities.value.toMutableMap()
+        current.entries.removeIf { it.value.profileId == profileId }
+        progressEntities.value = current
         continueRows.value = emptyList()
     }
 
     override suspend fun deleteAllForProfile(profileId: Long) {
-        val current = progressEntities.value.toMutableMap()
-        current.values.removeAll { it.profileId == profileId }
-        progressEntities.value = current
+        deleteAll(profileId)
     }
 }

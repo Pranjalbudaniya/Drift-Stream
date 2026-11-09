@@ -9,20 +9,23 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SearchHistoryDao {
-    @Query("SELECT * FROM search_history ORDER BY lastUsedAt DESC")
-    fun observeAll(): Flow<List<SearchHistoryEntity>>
+    @Query("SELECT * FROM search_history WHERE profileId = :profileId ORDER BY lastUsedAt DESC")
+    fun observeAll(profileId: Long): Flow<List<SearchHistoryEntity>>
 
-    @Query("SELECT * FROM search_history ORDER BY lastUsedAt DESC")
-    suspend fun getAll(): List<SearchHistoryEntity>
+    @Query("SELECT * FROM search_history WHERE profileId = :profileId ORDER BY lastUsedAt DESC")
+    suspend fun getAll(profileId: Long): List<SearchHistoryEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: SearchHistoryEntity)
 
-    @Query("DELETE FROM search_history WHERE `query` = :query")
-    suspend fun delete(query: String)
+    @Query("DELETE FROM search_history WHERE profileId = :profileId AND `query` = :query")
+    suspend fun delete(
+        profileId: Long,
+        query: String,
+    )
 
-    @Query("DELETE FROM search_history")
-    suspend fun deleteAll()
+    @Query("DELETE FROM search_history WHERE profileId = :profileId")
+    suspend fun deleteAll(profileId: Long)
 
     @Query("DELETE FROM search_history WHERE profileId = :profileId")
     suspend fun deleteAllForProfile(profileId: Long)

@@ -2,10 +2,12 @@ package com.drift.stream.data.repository
 
 import com.drift.stream.data.local.db.dao.SearchHistoryDao
 import com.drift.stream.data.local.db.entity.SearchHistoryEntity
+import com.drift.stream.testutil.FakeActiveProfileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -25,6 +27,7 @@ class SearchHistoryRepositoryTest {
         repository =
             SearchHistoryRepositoryImpl(
                 dao = dao,
+                activeProfile = FakeActiveProfileProvider(1L),
                 dispatcher = Dispatchers.Unconfined,
                 clock = {
                     currentTime += 10L
@@ -107,26 +110,34 @@ class SearchHistoryRepositoryTest {
     private class FakeSearchHistoryDao : SearchHistoryDao {
         private val entries = MutableStateFlow<List<SearchHistoryEntity>>(emptyList())
 
-        override fun observeAll(): Flow<List<SearchHistoryEntity>> = entries
+        override fun observeAll(profileId: Long): Flow<List<SearchHistoryEntity>> =
+            entries.map { list -> list.filter { it.profileId == profileId } }
 
-        override suspend fun getAll(): List<SearchHistoryEntity> = entries.value
+        override suspend fun getAll(profileId: Long): List<SearchHistoryEntity> =
+            entries.value.filter { it.profileId == profileId }
 
         override suspend fun upsert(entity: SearchHistoryEntity) {
             entries.update { list ->
-                (list.filterNot { it.query == entity.query } + entity).sortedByDescending { it.lastUsedAt }
+                (list.filterNot { it.profileId == entity.profileId && it.query == entity.query } + entity)
+                    .sortedByDescending { it.lastUsedAt }
             }
         }
 
-        override suspend fun delete(query: String) {
-            entries.update { list -> list.filterNot { it.query == query } }
+        override suspend fun delete(
+            profileId: Long,
+            query: String,
+        ) {
+            entries.update { list ->
+                list.filterNot { it.profileId == profileId && it.query == query }
+            }
         }
 
-        override suspend fun deleteAll() {
-            entries.value = emptyList()
+        override suspend fun deleteAll(profileId: Long) {
+            entries.update { list -> list.filterNot { it.profileId == profileId } }
         }
 
         override suspend fun deleteAllForProfile(profileId: Long) {
-            entries.update { list -> list.filterNot { it.profileId == profileId } }
+            deleteAll(profileId)
         }
     }
 }

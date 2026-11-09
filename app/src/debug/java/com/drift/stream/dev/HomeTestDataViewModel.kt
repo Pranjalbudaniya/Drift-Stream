@@ -7,10 +7,12 @@ import com.drift.stream.data.local.db.dao.LibraryDao
 import com.drift.stream.data.local.db.dao.ProgressDao
 import com.drift.stream.data.local.db.entity.LibraryItemEntity
 import com.drift.stream.data.local.db.entity.WatchProgressEntity
+import com.drift.stream.data.profile.requireId
 import com.drift.stream.data.remote.addon.AddonRemoteDataSource
 import com.drift.stream.di.IoDispatcher
 import com.drift.stream.domain.model.MetaPreview
 import com.drift.stream.domain.model.Outcome
+import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.ProgressRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
@@ -58,6 +60,7 @@ class HomeTestDataViewModel
         private val libraryDao: LibraryDao,
         private val progressDao: ProgressDao,
         private val progressRepository: ProgressRepository,
+        private val activeProfile: ActiveProfileProvider,
         @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(HomeTestDataUiState())
@@ -90,7 +93,6 @@ class HomeTestDataViewModel
                                 status =
                                     HomeTestDataStatus.Resource(
                                         R.string.home_test_data_status_cinemeta_failed,
-                                        result.error.toString(),
                                     ),
                             )
                         }
@@ -100,6 +102,7 @@ class HomeTestDataViewModel
         }
 
         private suspend fun insertCinemetaItems(items: List<MetaPreview>) {
+            val profileId = activeProfile.requireId()
             withContext(ioDispatcher) {
                 val now = System.currentTimeMillis()
                 items.forEachIndexed { index, item ->
@@ -122,6 +125,7 @@ class HomeTestDataViewModel
                             background = item.background,
                             inWatchlist = false,
                             addedAt = timestamp,
+                            profileId = profileId,
                         ),
                     )
                     progressDao.upsert(
@@ -136,6 +140,7 @@ class HomeTestDataViewModel
                             durationMs = MOVIE_DURATION_MS,
                             watched = false,
                             updatedAt = timestamp,
+                            profileId = profileId,
                         ),
                     )
                 }
@@ -144,6 +149,7 @@ class HomeTestDataViewModel
 
         fun addNoPosterItem() {
             viewModelScope.launch(ioDispatcher) {
+                val profileId = activeProfile.requireId()
                 val now = System.currentTimeMillis()
                 val devId = "${DEV_PREFIX}no_poster_item"
                 val positionMs = (MOVIE_DURATION_MS * PROGRESS_40).toLong()
@@ -157,6 +163,7 @@ class HomeTestDataViewModel
                         background = null,
                         inWatchlist = false,
                         addedAt = now,
+                        profileId = profileId,
                     ),
                 )
                 progressDao.upsert(
@@ -171,6 +178,7 @@ class HomeTestDataViewModel
                         durationMs = MOVIE_DURATION_MS,
                         watched = false,
                         updatedAt = now,
+                        profileId = profileId,
                     ),
                 )
                 _uiState.update {
@@ -183,6 +191,7 @@ class HomeTestDataViewModel
 
         fun addFinishedMovie() {
             viewModelScope.launch(ioDispatcher) {
+                val profileId = activeProfile.requireId()
                 val now = System.currentTimeMillis()
                 val devId = "${DEV_PREFIX}finished_movie"
 
@@ -195,6 +204,7 @@ class HomeTestDataViewModel
                         background = null,
                         inWatchlist = false,
                         addedAt = now,
+                        profileId = profileId,
                     ),
                 )
                 progressDao.upsert(
@@ -209,6 +219,7 @@ class HomeTestDataViewModel
                         durationMs = MOVIE_DURATION_MS,
                         watched = true,
                         updatedAt = now,
+                        profileId = profileId,
                     ),
                 )
                 _uiState.update {
@@ -221,6 +232,7 @@ class HomeTestDataViewModel
 
         fun addShortMovie() {
             viewModelScope.launch(ioDispatcher) {
+                val profileId = activeProfile.requireId()
                 val now = System.currentTimeMillis()
                 val devId = "${DEV_PREFIX}short_movie"
 
@@ -233,6 +245,7 @@ class HomeTestDataViewModel
                         background = null,
                         inWatchlist = false,
                         addedAt = now,
+                        profileId = profileId,
                     ),
                 )
                 progressDao.upsert(
@@ -247,6 +260,7 @@ class HomeTestDataViewModel
                         durationMs = MOVIE_DURATION_MS,
                         watched = false,
                         updatedAt = now,
+                        profileId = profileId,
                     ),
                 )
                 _uiState.update {
@@ -259,6 +273,7 @@ class HomeTestDataViewModel
 
         fun addSeriesEpisode() {
             viewModelScope.launch(ioDispatcher) {
+                val profileId = activeProfile.requireId()
                 val now = System.currentTimeMillis()
                 val devId = "${DEV_PREFIX}series_episode"
                 val positionMs = (SERIES_DURATION_MS * PROGRESS_60).toLong()
@@ -272,6 +287,7 @@ class HomeTestDataViewModel
                         background = null,
                         inWatchlist = false,
                         addedAt = now,
+                        profileId = profileId,
                     ),
                 )
                 progressDao.upsert(
@@ -286,6 +302,7 @@ class HomeTestDataViewModel
                         durationMs = SERIES_DURATION_MS,
                         watched = false,
                         updatedAt = now,
+                        profileId = profileId,
                     ),
                 )
                 _uiState.update {
@@ -298,14 +315,15 @@ class HomeTestDataViewModel
 
         fun clearTestData() {
             viewModelScope.launch(ioDispatcher) {
+                val profileId = activeProfile.requireId()
                 val current = progressRepository.observeContinueWatching().first()
                 val devItems = current.filter { it.metaId.startsWith(DEV_PREFIX) }
                 devItems.forEach {
                     progressRepository.removeFromContinueWatching(it.metaId)
                 }
                 // Also clean up any dev items that are hidden by rules (such as finished or <60s movies)
-                progressDao.deleteByMeta("${DEV_PREFIX}finished_movie")
-                progressDao.deleteByMeta("${DEV_PREFIX}short_movie")
+                progressDao.deleteByMeta(profileId, "${DEV_PREFIX}finished_movie")
+                progressDao.deleteByMeta(profileId, "${DEV_PREFIX}short_movie")
 
                 _uiState.update {
                     it.copy(

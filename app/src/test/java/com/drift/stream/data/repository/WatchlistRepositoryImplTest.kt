@@ -3,6 +3,7 @@ package com.drift.stream.data.repository
 import com.drift.stream.data.local.db.dao.FakeLibraryDao
 import com.drift.stream.data.local.db.entity.LibraryItemEntity
 import com.drift.stream.domain.model.ListStatus
+import com.drift.stream.testutil.FakeActiveProfileProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -18,7 +19,7 @@ class WatchlistRepositoryImplTest {
 
     @Before
     fun setup() {
-        repository = WatchlistRepositoryImpl(fakeDao)
+        repository = WatchlistRepositoryImpl(fakeDao, FakeActiveProfileProvider(1L))
     }
 
     @Test

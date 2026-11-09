@@ -5,12 +5,15 @@ import com.drift.stream.data.local.db.dao.LibraryDao
 import com.drift.stream.data.local.db.dao.ProgressDao
 import com.drift.stream.data.local.db.entity.LibraryItemEntity
 import com.drift.stream.data.local.db.entity.WatchProgressEntity
+import com.drift.stream.data.profile.requireId
+import com.drift.stream.data.profile.scopedFlow
 import com.drift.stream.di.IoDispatcher
 import com.drift.stream.domain.model.ContinueWatchingItem
 import com.drift.stream.domain.model.EpisodeProgress
 import com.drift.stream.domain.model.EpisodeRef
 import com.drift.stream.domain.model.MetaPreview
 import com.drift.stream.domain.model.WatchProgress
+import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.ProgressRepository
 import com.drift.stream.domain.usecase.ContinueWatchingRules
 import com.drift.stream.domain.usecase.ProgressRules
@@ -25,32 +28,36 @@ import javax.inject.Inject
 class ProgressRepositoryImpl(
     private val progressDao: ProgressDao,
     private val libraryDao: LibraryDao,
+    private val activeProfile: ActiveProfileProvider,
     private val transactionRunner: TransactionRunner,
-    private val continueWatchingRules: ContinueWatchingRules,
     @IoDispatcher private val dispatcher: CoroutineDispatcher,
     private val clock: () -> Long,
 ) : ProgressRepository {
+    private val continueWatchingRules: ContinueWatchingRules = ContinueWatchingRules()
+
     @Inject
     constructor(
         progressDao: ProgressDao,
         libraryDao: LibraryDao,
+        activeProfile: ActiveProfileProvider,
         transactionRunner: TransactionRunner,
-        continueWatchingRules: ContinueWatchingRules,
         @IoDispatcher dispatcher: CoroutineDispatcher,
     ) : this(
         progressDao = progressDao,
         libraryDao = libraryDao,
+        activeProfile = activeProfile,
         transactionRunner = transactionRunner,
-        continueWatchingRules = continueWatchingRules,
         dispatcher = dispatcher,
         clock = { System.currentTimeMillis() },
     )
 
     override fun observeContinueWatching(): Flow<List<ContinueWatchingItem>> =
-        progressDao
-            .observeContinueRows()
-            .map { continueWatchingRules(it, clock()) }
-            .distinctUntilChanged()
+        activeProfile
+            .scopedFlow { profileId ->
+                progressDao
+                    .observeContinueRows(profileId)
+                    .map { continueWatchingRules(it, clock()) }
+            }.distinctUntilChanged()
             .flowOn(dispatcher)
 
     override suspend fun removeFromContinueWatching(metaId: String) {
@@ -58,32 +65,38 @@ class ProgressRepositoryImpl(
     }
 
     override suspend fun clearInProgress(metaId: String) {
+        val profileId = activeProfile.requireId()
         withContext(dispatcher) {
-            progressDao.clearInProgress(metaId)
+            progressDao.clearInProgress(profileId, metaId)
         }
     }
 
     override fun observeWatchedMovieIds(): Flow<Set<String>> =
-        progressDao
-            .observeWatchedMovieIds()
-            .map { it.toSet() }
-            .distinctUntilChanged()
+        activeProfile
+            .scopedFlow { profileId ->
+                progressDao
+                    .observeWatchedMovieIds(profileId)
+                    .map { it.toSet() }
+            }.distinctUntilChanged()
             .flowOn(dispatcher)
 
     override fun observeEpisodeProgress(metaId: String): Flow<Map<String, EpisodeProgress>> =
-        progressDao
-            .observeByMeta(metaId)
-            .map { list ->
-                list.associate { entity ->
-                    entity.videoId to
-                        EpisodeProgress(
-                            videoId = entity.videoId,
-                            positionMs = entity.positionMs,
-                            durationMs = entity.durationMs,
-                            watched = entity.watched,
-                            updatedAt = entity.updatedAt,
-                        )
-                }
+        activeProfile
+            .scopedFlow { profileId ->
+                progressDao
+                    .observeByMeta(profileId, metaId)
+                    .map { list ->
+                        list.associate { entity ->
+                            entity.videoId to
+                                EpisodeProgress(
+                                    videoId = entity.videoId,
+                                    positionMs = entity.positionMs,
+                                    durationMs = entity.durationMs,
+                                    watched = entity.watched,
+                                    updatedAt = entity.updatedAt,
+                                )
+                        }
+                    }
             }.distinctUntilChanged()
             .flowOn(dispatcher)
 
@@ -101,10 +114,11 @@ class ProgressRepositoryImpl(
         watched: Boolean,
     ) {
         if (episodes.isEmpty()) return
+        val profileId = activeProfile.requireId()
         withContext(dispatcher) {
             transactionRunner.run {
                 if (watched) {
-                    val existing = libraryDao.get(meta.id)
+                    val existing = libraryDao.get(profileId, meta.id)
                     if (existing == null) {
                         libraryDao.upsert(
                             LibraryItemEntity(
@@ -115,6 +129,7 @@ class ProgressRepositoryImpl(
                                 background = meta.background,
                                 inWatchlist = false,
                                 addedAt = clock(),
+                                profileId = profileId,
                             ),
                         )
                     }
@@ -132,25 +147,29 @@ class ProgressRepositoryImpl(
                                 durationMs = 0L,
                                 watched = true,
                                 updatedAt = now,
+                                profileId = profileId,
                             )
                         }
                     progressDao.upsertAll(entities)
                 } else {
                     val videoIds = episodes.map { it.videoId }
-                    progressDao.clearWatched(meta.id, videoIds)
+                    progressDao.clearWatched(profileId, meta.id, videoIds)
                 }
             }
         }
     }
 
-    override suspend fun get(key: String): WatchProgress? =
-        withContext(dispatcher) {
-            progressDao.get(key)?.toDomain()
+    override suspend fun get(key: String): WatchProgress? {
+        val profileId = activeProfile.requireId()
+        return withContext(dispatcher) {
+            progressDao.get(profileId, key)?.toDomain()
         }
+    }
 
     override suspend fun upsert(progress: WatchProgress) {
+        val profileId = activeProfile.requireId()
         withContext(dispatcher) {
-            progressDao.upsert(progress.toEntity())
+            progressDao.upsert(progress.toEntity(profileId))
         }
     }
 }
@@ -169,7 +188,7 @@ private fun WatchProgressEntity.toDomain(): WatchProgress =
         updatedAt = updatedAt,
     )
 
-private fun WatchProgress.toEntity(): WatchProgressEntity =
+private fun WatchProgress.toEntity(profileId: Long): WatchProgressEntity =
     WatchProgressEntity(
         key = key,
         metaId = metaId,
@@ -181,4 +200,5 @@ private fun WatchProgress.toEntity(): WatchProgressEntity =
         durationMs = durationMs,
         watched = watched,
         updatedAt = updatedAt,
+        profileId = profileId,
     )

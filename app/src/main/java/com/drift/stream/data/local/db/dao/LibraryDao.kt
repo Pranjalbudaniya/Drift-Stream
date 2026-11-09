@@ -13,14 +13,17 @@ data class LibraryStatusTuple(
 
 @Dao
 interface LibraryDao {
-    @Query("SELECT metaId, listStatus FROM library_items WHERE inWatchlist = 1")
-    fun observeListStatuses(): Flow<List<LibraryStatusTuple>>
+    @Query("SELECT metaId, listStatus FROM library_items WHERE profileId = :profileId AND inWatchlist = 1")
+    fun observeListStatuses(profileId: Long): Flow<List<LibraryStatusTuple>>
 
-    @Query("SELECT * FROM library_items WHERE inWatchlist = 1")
-    fun observeWatchlist(): Flow<List<LibraryItemEntity>>
+    @Query("SELECT * FROM library_items WHERE profileId = :profileId AND inWatchlist = 1")
+    fun observeWatchlist(profileId: Long): Flow<List<LibraryItemEntity>>
 
-    @Query("SELECT * FROM library_items WHERE metaId = :metaId")
-    suspend fun get(metaId: String): LibraryItemEntity?
+    @Query("SELECT * FROM library_items WHERE profileId = :profileId AND metaId = :metaId")
+    suspend fun get(
+        profileId: Long,
+        metaId: String,
+    ): LibraryItemEntity?
 
     @Upsert
     suspend fun upsert(entity: LibraryItemEntity)

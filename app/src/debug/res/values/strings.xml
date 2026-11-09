@@ -198,4 +198,17 @@
     <string name="proxy_tester_stop">Stop</string>
     <string name="proxy_tester_status_label">Status: %1$s</string>
     <string name="proxy_tester_no_app_found">No app found to handle this URL</string>
+
+    <!-- Profile tester -->
+    <string name="dev_tools_profile_tester">Profile tester</string>
+    <string name="profile_tester_title">Profile tester</string>
+    <string name="profile_tester_create">Create</string>
+    <string name="profile_tester_name_hint">Profile name</string>
+    <string name="profile_tester_set_active">Set active</string>
+    <string name="profile_tester_delete">Delete</string>
+    <string name="profile_tester_owner">Owner</string>
+    <string name="profile_tester_active">Active</string>
+    <string name="profile_tester_add_sample_data">Add sample data</string>
+    <string name="profile_tester_clear_active_data">Clear active data</string>
+    <string name="profile_tester_counts">Watchlist: %1$d | History: %2$d | Searches: %3$d</string>
 </resources>

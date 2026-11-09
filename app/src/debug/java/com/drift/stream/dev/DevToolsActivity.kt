@@ -46,6 +46,7 @@ class DevToolsActivity : ComponentActivity() {
     private val databaseDevViewModel: DatabaseDevViewModel by viewModels()
     private val torrentTesterViewModel: TorrentTesterViewModel by viewModels()
     private val proxyTesterViewModel: ProxyTesterViewModel by viewModels()
+    private val profileTesterViewModel: ProfileTesterViewModel by viewModels()
 
     @Inject lateinit var cacheLedger: CacheLedger
 
@@ -62,6 +63,7 @@ class DevToolsActivity : ComponentActivity() {
                 databaseDevViewModel = databaseDevViewModel,
                 torrentTesterViewModel = torrentTesterViewModel,
                 proxyTesterViewModel = proxyTesterViewModel,
+                profileTesterViewModel = profileTesterViewModel,
                 cacheLedger = cacheLedger,
                 cacheFiles = cacheFiles,
             )
@@ -77,6 +79,7 @@ private fun DevToolsContent(
     databaseDevViewModel: DatabaseDevViewModel,
     torrentTesterViewModel: TorrentTesterViewModel,
     proxyTesterViewModel: ProxyTesterViewModel,
+    profileTesterViewModel: ProfileTesterViewModel,
     cacheLedger: CacheLedger,
     cacheFiles: TorrentCacheFiles,
 ) {
@@ -159,12 +162,23 @@ private fun DevToolsContent(
                     )
                 }
 
+                DevScreen.PROFILE_TESTER -> {
+                    BackHandler { currentScreen = DevScreen.MENU }
+                    val profileState by profileTesterViewModel.uiState.collectAsState()
+                    ProfileTesterScreen(
+                        state = profileState,
+                        onEvent = profileTesterViewModel::onEvent,
+                        onBack = { currentScreen = DevScreen.MENU },
+                    )
+                }
+
                 DevScreen.MENU -> {
                     DevToolsMenu(
                         onNavigateGallery = { currentScreen = DevScreen.THEME_GALLERY },
                         onNavigateTester = { currentScreen = DevScreen.ADDON_TESTER },
                         onNavigateTorrentTester = { currentScreen = DevScreen.TORRENT_TESTER },
                         onNavigateProxyTester = { currentScreen = DevScreen.PROXY_TESTER },
+                        onNavigateProfileTester = { currentScreen = DevScreen.PROFILE_TESTER },
                         onNavigateHomeTestData = { currentScreen = DevScreen.HOME_TEST_DATA },
                         onNavigateDatabase = { currentScreen = DevScreen.DATABASE },
                         cacheLedger = cacheLedger,
@@ -185,6 +199,7 @@ private fun DevToolsMenu(
     onNavigateTester: () -> Unit,
     onNavigateTorrentTester: () -> Unit,
     onNavigateProxyTester: () -> Unit,
+    onNavigateProfileTester: () -> Unit,
     onNavigateHomeTestData: () -> Unit,
     onNavigateDatabase: () -> Unit,
 ) {
@@ -260,6 +275,17 @@ private fun DevToolsMenu(
             item {
                 ListItem(
                     headlineContent = {
+                        Text(stringResource(R.string.dev_tools_profile_tester))
+                    },
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onNavigateProfileTester),
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = {
                         Text(stringResource(R.string.dev_tools_home_test_data))
                     },
                     modifier =
@@ -296,6 +322,7 @@ private enum class DevScreen {
     ADDON_TESTER,
     TORRENT_TESTER,
     PROXY_TESTER,
+    PROFILE_TESTER,
     HOME_TEST_DATA,
     DATABASE,
 }

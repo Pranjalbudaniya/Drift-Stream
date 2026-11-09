@@ -9,15 +9,19 @@ import com.drift.stream.data.local.db.dao.ProfileDao
 import com.drift.stream.data.local.db.dao.ProgressDao
 import com.drift.stream.data.local.db.dao.SearchHistoryDao
 import com.drift.stream.data.local.db.entity.ProfileEntity
+import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.CreateResult
 import com.drift.stream.domain.repository.DeleteResult
+import com.drift.stream.testutil.FakeActiveProfileProvider
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -41,6 +45,23 @@ class ProfileRepositoryImplTest {
         return database
     }
 
+    private fun TestScope.createRepository(
+        database: NexusDatabase,
+        transactionRunner: TransactionRunner =
+            object : TransactionRunner {
+                override suspend fun <T> run(block: suspend () -> T): T = block()
+            },
+        activeProfileProvider: ActiveProfileProvider = FakeActiveProfileProvider(1L),
+        profileDataStores: ProfileDataStores = mockk(relaxed = true),
+    ): ProfileRepositoryImpl =
+        ProfileRepositoryImpl(
+            database = database,
+            transactionRunner = transactionRunner,
+            ioDispatcher = UnconfinedTestDispatcher(testScheduler),
+            activeProfileProvider = activeProfileProvider,
+            profileDataStores = profileDataStores,
+        )
+
     @Test
     fun PF1_ensureDefaultProfile_createsProfileOneWhenEmpty() =
         runTest {
@@ -56,10 +77,9 @@ class ProfileRepositoryImplTest {
             coEvery { profileDao.insert(capture(insertedSlot)) } returns 1L
 
             val repository =
-                ProfileRepositoryImpl(
+                createRepository(
                     database = mockDatabase(profileDao),
                     transactionRunner = transactionRunner,
-                    ioDispatcher = UnconfinedTestDispatcher(testScheduler),
                 )
 
             val profile = repository.ensureDefaultProfile()
@@ -75,7 +95,7 @@ class ProfileRepositoryImplTest {
         }
 
     @Test
-    fun PF2_ensureDefaultProfile_keepsExistingProfiles() =
+    fun PF2_ensureDefaultProfile_returnsLowestIdWhenPopulated() =
         runTest {
             val profileDao = mockk<ProfileDao>(relaxed = true)
             val transactionRunner =
@@ -103,10 +123,9 @@ class ProfileRepositoryImplTest {
             coEvery { profileDao.getLowestId() } returns profile1
 
             val repository =
-                ProfileRepositoryImpl(
+                createRepository(
                     database = mockDatabase(profileDao),
                     transactionRunner = transactionRunner,
-                    ioDispatcher = UnconfinedTestDispatcher(testScheduler),
                 )
 
             val result = repository.ensureDefaultProfile()
@@ -135,10 +154,9 @@ class ProfileRepositoryImplTest {
             coEvery { profileDao.insert(capture(insertedSlot)) } returns 2L
 
             val repository =
-                ProfileRepositoryImpl(
+                createRepository(
                     database = mockDatabase(profileDao),
                     transactionRunner = transactionRunner,
-                    ioDispatcher = UnconfinedTestDispatcher(testScheduler),
                 )
 
             val result = repository.create(name = "Guest", avatarColor = 2, avatarEmoji = "🍿")
@@ -173,10 +191,9 @@ class ProfileRepositoryImplTest {
             coEvery { profileDao.count() } returns 1
 
             val repository =
-                ProfileRepositoryImpl(
+                createRepository(
                     database = mockDatabase(profileDao = profileDao, addonDao = addonDao),
                     transactionRunner = transactionRunner,
-                    ioDispatcher = UnconfinedTestDispatcher(testScheduler),
                 )
 
             val ownerResult = repository.delete(1L)
@@ -222,10 +239,9 @@ class ProfileRepositoryImplTest {
             coEvery { profileDao.count() } returns 2
 
             val repository =
-                ProfileRepositoryImpl(
+                createRepository(
                     database = database,
                     transactionRunner = transactionRunner,
-                    ioDispatcher = UnconfinedTestDispatcher(testScheduler),
                 )
 
             val result = repository.delete(2L)
@@ -238,5 +254,66 @@ class ProfileRepositoryImplTest {
             coVerify(exactly = 1) { searchHistoryDao.deleteAllForProfile(2L) }
             coVerify(exactly = 1) { downloadDao.deleteAllForProfile(2L) }
             coVerify(exactly = 1) { profileDao.deleteById(2L) }
+        }
+
+    @Test
+    fun DEL1_deleteActiveProfile_isRefused() =
+        runTest {
+            val profileDao = mockk<ProfileDao>(relaxed = true)
+            val nonOwner = ProfileEntity(2L, "Guest", 1, null, false, false, null, null, null, 1000L, 1000L, 1)
+            coEvery { profileDao.getById(2L) } returns nonOwner
+            coEvery { profileDao.count() } returns 2
+
+            val activeProfileProvider = FakeActiveProfileProvider(2L)
+            val repository =
+                createRepository(
+                    database = mockDatabase(profileDao),
+                    activeProfileProvider = activeProfileProvider,
+                )
+
+            val result = repository.delete(2L)
+            assertEquals(DeleteResult.RefusedActive, result)
+            coVerify(exactly = 0) { profileDao.deleteById(any()) }
+        }
+
+    @Test
+    fun DEL2_deleteProfile_removesItsDataStoreFiles() =
+        runTest {
+            val profileDao = mockk<ProfileDao>(relaxed = true)
+            val nonOwner = ProfileEntity(2L, "Guest", 1, null, false, false, null, null, null, 1000L, 1000L, 1)
+            coEvery { profileDao.getById(2L) } returns nonOwner
+            coEvery { profileDao.count() } returns 2
+
+            val profileDataStores = mockk<ProfileDataStores>(relaxed = true)
+            val activeProfileProvider = FakeActiveProfileProvider(1L)
+            var transactionRan = false
+            var storesDeleteCalledAfterTx = false
+
+            val transactionRunner =
+                object : TransactionRunner {
+                    override suspend fun <T> run(block: suspend () -> T): T {
+                        transactionRan = true
+                        return block()
+                    }
+                }
+
+            every { profileDataStores.delete(2L) } answers {
+                if (transactionRan) {
+                    storesDeleteCalledAfterTx = true
+                }
+            }
+
+            val repository =
+                createRepository(
+                    database = mockDatabase(profileDao),
+                    transactionRunner = transactionRunner,
+                    activeProfileProvider = activeProfileProvider,
+                    profileDataStores = profileDataStores,
+                )
+
+            val result = repository.delete(2L)
+            assertEquals(DeleteResult.Deleted, result)
+            assertTrue(storesDeleteCalledAfterTx)
+            verify(exactly = 1) { profileDataStores.delete(2L) }
         }
 }

@@ -33,6 +33,8 @@ sealed interface DeleteResult {
 
     data object RefusedLast : DeleteResult
 
+    data object RefusedActive : DeleteResult
+
     data object NotFound : DeleteResult
 }
 

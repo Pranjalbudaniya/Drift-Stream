@@ -3,8 +3,10 @@ package com.drift.stream.data.profile
 import com.drift.stream.data.local.db.NexusDatabase
 import com.drift.stream.data.local.db.TransactionRunner
 import com.drift.stream.data.local.db.entity.ProfileEntity
+import com.drift.stream.data.player.PlayerTrace
 import com.drift.stream.di.IoDispatcher
 import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.CreateResult
 import com.drift.stream.domain.repository.DeleteResult
 import com.drift.stream.domain.repository.ProfileRepository
@@ -25,6 +27,8 @@ class ProfileRepositoryImpl
         database: NexusDatabase,
         private val transactionRunner: TransactionRunner,
         @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+        private val activeProfileProvider: ActiveProfileProvider,
+        private val profileDataStores: ProfileDataStores,
     ) : ProfileRepository {
         private val profileDao = database.profileDao()
         private val addonDao = database.addonDao()
@@ -139,6 +143,9 @@ class ProfileRepositoryImpl
                 if (count <= 1) {
                     return@withContext DeleteResult.RefusedLast
                 }
+                if (id == activeProfileProvider.activeProfileId.value) {
+                    return@withContext DeleteResult.RefusedActive
+                }
                 transactionRunner.run {
                     addonDao.deleteAllForProfile(id)
                     progressDao.deleteAllForProfile(id)
@@ -146,6 +153,12 @@ class ProfileRepositoryImpl
                     searchHistoryDao.deleteAllForProfile(id)
                     downloadDao.deleteAllForProfile(id)
                     profileDao.deleteById(id)
+                }
+                try {
+                    profileDataStores.delete(id)
+                } catch (expected: Exception) {
+                    PlayerTrace.log("profile.delete_error")
+                    throw expected
                 }
                 DeleteResult.Deleted
             }

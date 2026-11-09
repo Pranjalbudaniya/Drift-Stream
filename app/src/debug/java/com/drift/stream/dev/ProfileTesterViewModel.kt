@@ -159,6 +159,7 @@ class ProfileTesterViewModel
                         DeleteResult.Deleted -> "Deleted"
                         DeleteResult.RefusedOwner -> "RefusedOwner"
                         DeleteResult.RefusedLast -> "RefusedLast"
+                        DeleteResult.RefusedActive -> "RefusedActive"
                         DeleteResult.NotFound -> "NotFound"
                     }
             }

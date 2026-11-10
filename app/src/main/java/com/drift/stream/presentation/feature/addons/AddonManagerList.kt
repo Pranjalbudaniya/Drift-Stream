@@ -3,12 +3,22 @@ package com.drift.stream.presentation.feature.addons
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import com.drift.stream.R
 import com.drift.stream.domain.model.Addon
 import com.drift.stream.domain.model.AddonCategory
+import com.drift.stream.domain.model.AddonOwner
+import com.drift.stream.domain.model.categoriesOf
 import com.drift.stream.presentation.theme.NexusTheme
 
 @Composable
@@ -25,33 +35,80 @@ fun AddonManagerList(
             uiState.visibleAddons
         }
 
-    if (uiState.addons.isEmpty() && !uiState.seedLoading) {
-        EmptyStateView(
-            onAddCinemeta = { onEvent(AddonManagerEvent.AddCinemeta) },
-            modifier = modifier,
-        )
-    } else if (uiState.searchQuery.isNotBlank() && currentVisibleList.isEmpty()) {
-        EmptySearchMatchesView(modifier = modifier)
-    } else if (selectedCat != null && uiState.visibleAddons.isEmpty()) {
-        EmptyCategoryView(
-            category = selectedCat,
-            onInstall = { onEvent(AddonManagerEvent.OpenStore(selectedCat)) },
-            modifier = modifier,
-        )
-    } else {
-        AddonLazyColumn(
-            uiState = uiState,
-            currentVisibleList = currentVisibleList,
-            onEvent = onEvent,
-            modifier = modifier,
-        )
+    val visibleShared =
+        remember(uiState.sharedWithMe, uiState.searchQuery, uiState.selectedCategory) {
+            filterSharedAddons(uiState.sharedWithMe, uiState.searchQuery, uiState.selectedCategory)
+        }
+
+    when {
+        isEmptyListState(uiState, visibleShared) -> {
+            EmptyStateView(
+                onAddCinemeta = { onEvent(AddonManagerEvent.AddCinemeta) },
+                modifier = modifier,
+            )
+        }
+
+        isSearchEmpty(uiState, currentVisibleList, visibleShared) -> {
+            EmptySearchMatchesView(modifier = modifier)
+        }
+
+        selectedCat != null && isCategoryEmpty(uiState.visibleAddons, visibleShared) -> {
+            EmptyCategoryView(
+                category = selectedCat,
+                onInstall = { onEvent(AddonManagerEvent.OpenStore(selectedCat)) },
+                modifier = modifier,
+            )
+        }
+
+        else -> {
+            AddonLazyColumn(
+                uiState = uiState,
+                currentVisibleList = currentVisibleList,
+                visibleShared = visibleShared,
+                onEvent = onEvent,
+                modifier = modifier,
+            )
+        }
     }
 }
+
+private fun filterSharedAddons(
+    shared: List<Addon>,
+    query: String,
+    category: AddonCategory?,
+): List<Addon> {
+    val trimmed = query.trim()
+    return shared.filter { addon ->
+        val matchesCategory = category == null || category in categoriesOf(addon.manifest)
+        val matchesQuery =
+            trimmed.isEmpty() ||
+                addon.manifest.name.contains(trimmed, ignoreCase = true) ||
+                addon.manifest.description.contains(trimmed, ignoreCase = true)
+        matchesCategory && matchesQuery
+    }
+}
+
+private fun isEmptyListState(
+    uiState: AddonManagerUiState,
+    visibleShared: List<Addon>,
+): Boolean = uiState.addons.isEmpty() && visibleShared.isEmpty() && !uiState.seedLoading
+
+private fun isSearchEmpty(
+    uiState: AddonManagerUiState,
+    currentVisible: List<Addon>,
+    visibleShared: List<Addon>,
+): Boolean = uiState.searchQuery.isNotBlank() && currentVisible.isEmpty() && visibleShared.isEmpty()
+
+private fun isCategoryEmpty(
+    visibleAddons: List<Addon>,
+    visibleShared: List<Addon>,
+): Boolean = visibleAddons.isEmpty() && visibleShared.isEmpty()
 
 @Composable
 private fun AddonLazyColumn(
     uiState: AddonManagerUiState,
     currentVisibleList: List<Addon>,
+    visibleShared: List<Addon>,
     onEvent: (AddonManagerEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -94,6 +151,30 @@ private fun AddonLazyColumn(
                 )
             }
         }
+
+        if (uiState.profileCount >= 2 && visibleShared.isNotEmpty()) {
+            item(key = "header_shared_with_you") {
+                Text(
+                    text = stringResource(R.string.addon_shared_section),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = spacing.md, bottom = spacing.xs),
+                )
+            }
+            items(
+                items = visibleShared,
+                key = { addon -> "shared_${(addon.owner as? AddonOwner.Other)?.profileId}_${addon.manifest.id}" },
+            ) { addon ->
+                SharedAddonCard(
+                    addon = addon,
+                    isFamilyMode = uiState.isFamilyMode,
+                    onToggleEnabled = { enabled ->
+                        val ownerId = (addon.owner as? AddonOwner.Other)?.profileId ?: return@SharedAddonCard
+                        onEvent(AddonManagerEvent.SetSharedEnabled(ownerId, addon.transportUrl, enabled))
+                    },
+                )
+            }
+        }
     }
 }
 
@@ -110,6 +191,8 @@ private fun AddonItemRow(
         isFirst = visibleIndex == 0,
         isLast = visibleIndex == visibleList.size - 1,
         failedRefresh = addon.manifest.name in uiState.failedRefreshAddons,
+        profileCount = uiState.profileCount,
+        onToggleShared = { shared -> onEvent(AddonManagerEvent.SetShared(addon.transportUrl, shared)) },
         onToggleEnabled = { enabled -> onEvent(AddonManagerEvent.SetEnabled(addon, enabled)) },
         onMoveUp = { onEvent(AddonManagerEvent.MoveUp(addon)) },
         onMoveDown = { onEvent(AddonManagerEvent.MoveDown(addon)) },

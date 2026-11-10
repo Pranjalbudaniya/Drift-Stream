@@ -9,12 +9,14 @@ import com.drift.stream.domain.model.Addon
 import com.drift.stream.domain.model.AddonCapabilities
 import com.drift.stream.domain.model.AddonCategory
 import com.drift.stream.domain.model.AddonManifest
+import com.drift.stream.domain.model.AddonOwner
 import com.drift.stream.domain.model.CINEMETA_URL
 import com.drift.stream.domain.model.Outcome
 import com.drift.stream.domain.model.capabilities
 import com.drift.stream.domain.model.isUsable
 import com.drift.stream.domain.repository.AddonRepository
 import com.drift.stream.domain.repository.ContentPrefsRepository
+import com.drift.stream.domain.repository.ProfileRepository
 import com.drift.stream.domain.usecase.AddonFilters
 import com.drift.stream.domain.usecase.EnsureDefaultAddons
 import com.drift.stream.domain.usecase.RefreshAllAddons
@@ -61,6 +63,8 @@ sealed interface AddSheetState {
 
 data class AddonManagerUiState(
     val addons: List<Addon> = emptyList(),
+    val sharedWithMe: List<Addon> = emptyList(),
+    val profileCount: Int = 1,
     val searchQuery: String = "",
     val selectedCategory: AddonCategory? = null,
     val capabilities: AddonCapabilities = AddonCapabilities(hasCatalogs = false, hasStreams = false),
@@ -136,6 +140,17 @@ sealed interface AddonManagerEvent {
         val enabled: Boolean,
     ) : AddonManagerEvent
 
+    data class SetShared(
+        val url: String,
+        val shared: Boolean,
+    ) : AddonManagerEvent
+
+    data class SetSharedEnabled(
+        val ownerProfileId: Long,
+        val url: String,
+        val enabled: Boolean,
+    ) : AddonManagerEvent
+
     data class MoveUp(
         val addon: Addon,
     ) : AddonManagerEvent
@@ -188,6 +203,7 @@ class AddonManagerViewModel
         private val ensureDefaultAddons: EnsureDefaultAddons,
         private val contentPrefsRepository: ContentPrefsRepository,
         private val refreshAllAddons: RefreshAllAddons,
+        private val profileRepository: ProfileRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(AddonManagerUiState())
         val uiState: StateFlow<AddonManagerUiState> = _uiState.asStateFlow()
@@ -203,12 +219,17 @@ class AddonManagerViewModel
                 combine(
                     addonRepository.observeAll(),
                     contentPrefsRepository.familyMode,
-                ) { list, familyMode ->
-                    list to familyMode
-                }.collect { (list, familyMode) ->
+                    profileRepository.profiles,
+                ) { list, familyMode, profiles ->
+                    Triple(list, familyMode, profiles)
+                }.collect { (list, familyMode, profiles) ->
+                    val own = list.filter { it.owner is AddonOwner.Own }
+                    val shared = list.filter { it.owner is AddonOwner.Other }
                     _uiState.update { current ->
                         current.copy(
-                            addons = list,
+                            addons = own,
+                            sharedWithMe = shared,
+                            profileCount = profiles.size,
                             capabilities = list.filter { it.enabled && (!familyMode || !it.isAdult) }.capabilities(),
                             isFamilyMode = familyMode,
                         )
@@ -400,6 +421,18 @@ class AddonManagerViewModel
 
                 AddonManagerEvent.RetrySeed -> {
                     runSeed()
+                }
+
+                is AddonManagerEvent.SetShared -> {
+                    viewModelScope.launch {
+                        addonRepository.setShared(event.url, event.shared)
+                    }
+                }
+
+                is AddonManagerEvent.SetSharedEnabled -> {
+                    viewModelScope.launch {
+                        addonRepository.setSharedEnabled(event.ownerProfileId, event.url, event.enabled)
+                    }
                 }
 
                 else -> {}

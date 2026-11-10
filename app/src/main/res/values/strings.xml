@@ -158,6 +158,14 @@
     <string name="addon_dialog_cancel">Cancel</string>
     <string name="addon_logo_description">%1$s logo</string>
 
+    <!-- Addon Sharing (P19d) -->
+    <string name="addon_share_title">Share with other profiles</string>
+    <string name="addon_share_confirm_message">Other profiles on this phone will be able to use this addon, including anything private in its address. They will not see the address.</string>
+    <string name="addon_share_confirm_action">Share</string>
+    <string name="addon_shared_section">Shared with you</string>
+    <string name="addon_shared_by">Shared by %1$s</string>
+    <string name="addon_use_in_profile">Use in this profile</string>
+
     <!-- Navigation & Bottom bar -->
     <string name="nav_home">Home</string>
     <string name="nav_discover">Discover</string>

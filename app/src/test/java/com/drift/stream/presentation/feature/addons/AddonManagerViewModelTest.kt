@@ -5,15 +5,18 @@ import com.drift.stream.data.remote.addon.AddonUrlBuilder
 import com.drift.stream.domain.model.Addon
 import com.drift.stream.domain.model.AddonCategory
 import com.drift.stream.domain.model.AddonManifest
+import com.drift.stream.domain.model.AddonOwner
 import com.drift.stream.domain.model.AddonSource
 import com.drift.stream.domain.model.AppError
 import com.drift.stream.domain.model.CINEMETA_URL
 import com.drift.stream.domain.model.CatalogSpec
 import com.drift.stream.domain.model.ManifestHints
 import com.drift.stream.domain.model.Outcome
+import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.model.ResourceSpec
 import com.drift.stream.domain.repository.AddonRepository
 import com.drift.stream.domain.repository.ContentPrefsRepository
+import com.drift.stream.domain.repository.ProfileRepository
 import com.drift.stream.domain.usecase.EnsureDefaultAddons
 import com.drift.stream.domain.usecase.RefreshAllAddons
 import com.drift.stream.domain.usecase.RefreshSummary
@@ -45,7 +48,24 @@ class AddonManagerViewModelTest {
     private val ensureDefaultAddons = mockk<EnsureDefaultAddons>()
     private val contentPrefsRepository = mockk<ContentPrefsRepository>()
     private val refreshAllAddons = mockk<RefreshAllAddons>()
+    private val profileRepository = mockk<ProfileRepository>()
     private val familyModeFlow = MutableStateFlow(true)
+    private val profilesFlow = MutableStateFlow(listOf(sampleProfile(1L, "Default")))
+
+    private fun sampleProfile(
+        id: Long,
+        name: String,
+    ) = Profile(
+        id = id,
+        name = name,
+        avatarColor = 0,
+        avatarEmoji = null,
+        isOwner = id == 1L,
+        needsSetup = false,
+        createdAt = 1000L,
+        lastUsedAt = 1000L,
+        sortOrder = id.toInt(),
+    )
 
     private val sampleManifest =
         AddonManifest(
@@ -147,6 +167,7 @@ class AddonManagerViewModelTest {
         Dispatchers.setMain(testDispatcher)
         every { addonRepository.observeAll() } returns flowOf(emptyList())
         every { contentPrefsRepository.familyMode } returns familyModeFlow
+        every { profileRepository.profiles } returns profilesFlow
         coEvery { ensureDefaultAddons() } returns Outcome.Success(Unit)
         coEvery { refreshAllAddons(any()) } returns RefreshSummary(updated = 0, failed = emptyList())
     }
@@ -162,6 +183,7 @@ class AddonManagerViewModelTest {
             ensureDefaultAddons = ensureDefaultAddons,
             contentPrefsRepository = contentPrefsRepository,
             refreshAllAddons = refreshAllAddons,
+            profileRepository = profileRepository,
         )
 
     @Test
@@ -423,6 +445,70 @@ class AddonManagerViewModelTest {
 
             assertNull(viewModel.uiState.value.removeTarget)
             coVerify(exactly = 1) { addonRepository.remove(sampleAddon.transportUrl) }
+        }
+
+    @Test
+    fun VM1_addonManager_setShared_callsTheRepository() =
+        runTest {
+            coEvery { addonRepository.setShared("https://example.com/manifest.json", true) } returns Unit
+
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            viewModel.onEvent(AddonManagerEvent.SetShared("https://example.com/manifest.json", true))
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { addonRepository.setShared("https://example.com/manifest.json", true) }
+        }
+
+    @Test
+    fun VM2_addonManager_setSharedEnabled_callsTheRepository() =
+        runTest {
+            coEvery { addonRepository.setSharedEnabled(2L, "https://example.com/manifest.json", true) } returns Unit
+
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            viewModel.onEvent(AddonManagerEvent.SetSharedEnabled(2L, "https://example.com/manifest.json", true))
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { addonRepository.setSharedEnabled(2L, "https://example.com/manifest.json", true) }
+        }
+
+    @Test
+    fun VM3_addonManager_listsSharedByOthersInTheirOwnSection_withoutTheAddress() =
+        runTest {
+            val sharedAddon =
+                Addon(
+                    transportUrl = "https://secret-domain.org/shared/manifest.json",
+                    manifest = streamsManifest,
+                    enabled = false,
+                    position = 0,
+                    source = AddonSource.LOCAL,
+                    installedAt = 2000L,
+                    shared = false,
+                    owner = AddonOwner.Other(profileId = 2L, name = "Alice"),
+                )
+            every { addonRepository.observeAll() } returns flowOf(listOf(sampleAddon, sharedAddon))
+            profilesFlow.value =
+                listOf(
+                    sampleProfile(1L, "Default"),
+                    sampleProfile(2L, "Alice"),
+                )
+
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertEquals(2, state.profileCount)
+            assertEquals(listOf(sampleAddon), state.addons)
+            assertEquals(listOf(sharedAddon), state.sharedWithMe)
+
+            val shared = state.sharedWithMe.single()
+            assertTrue(shared.owner is AddonOwner.Other)
+            val owner = shared.owner as AddonOwner.Other
+            assertEquals("Alice", owner.name)
+            assertEquals(2L, owner.profileId)
         }
 
     @Test

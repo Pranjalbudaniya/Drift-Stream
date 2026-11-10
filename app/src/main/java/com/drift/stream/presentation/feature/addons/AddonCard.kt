@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,11 +45,13 @@ import com.drift.stream.R
 import com.drift.stream.data.remote.addon.AddonUrlBuilder
 import com.drift.stream.domain.model.Addon
 import com.drift.stream.domain.model.AddonManifest
+import com.drift.stream.domain.model.AddonOwner
 import com.drift.stream.domain.model.AddonSource
 import com.drift.stream.domain.model.ManifestHints
 import com.drift.stream.domain.model.ResourceSpec
 import com.drift.stream.presentation.common.NexusCard
 import com.drift.stream.presentation.common.NexusIconButton
+import com.drift.stream.presentation.common.NexusTextButton
 import com.drift.stream.presentation.theme.NexusTheme
 
 private val LOGO_SIZE: Dp = 48.dp
@@ -110,9 +113,12 @@ fun AddonCard(
     modifier: Modifier = Modifier,
     isFamilyMode: Boolean = false,
     failedRefresh: Boolean = false,
+    profileCount: Int = 1,
+    onToggleShared: (Boolean) -> Unit = {},
 ) {
     val spacing = NexusTheme.spacing
     var menuExpanded by remember { mutableStateOf(false) }
+    var showShareConfirmDialog by remember { mutableStateOf(false) }
     val host =
         remember(addon.transportUrl) {
             addon.transportUrl.toDisplayHost()
@@ -120,6 +126,16 @@ fun AddonCard(
 
     val isLockedAdult = isFamilyMode && addon.isAdult
     val contentAlpha = if (addon.enabled && !isLockedAdult) 1f else DISABLED_ALPHA
+
+    if (showShareConfirmDialog) {
+        AddonShareConfirmDialog(
+            onConfirm = {
+                showShareConfirmDialog = false
+                onToggleShared(true)
+            },
+            onDismiss = { showShareConfirmDialog = false },
+        )
+    }
 
     NexusCard(modifier = modifier.fillMaxWidth()) {
         Column(
@@ -178,46 +194,22 @@ fun AddonCard(
                 )
             }
 
-            FlowRow(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .alpha(contentAlpha),
-                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                verticalArrangement = Arrangement.spacedBy(spacing.xs),
-            ) {
-                if (addon.manifest.catalogs.isNotEmpty()) {
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text(stringResource(R.string.addon_catalogs_chip)) },
-                        shape = NexusTheme.shapes.chip,
-                    )
-                }
-                if (addon.manifest.resources.any { it.name == META_RESOURCE }) {
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text(stringResource(R.string.addon_meta_chip)) },
-                        shape = NexusTheme.shapes.chip,
-                    )
-                }
-                if (addon.manifest.resources.any { it.name == STREAM_RESOURCE }) {
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text(stringResource(R.string.addon_streams_chip)) },
-                        shape = NexusTheme.shapes.chip,
-                    )
-                }
-                if (addon.manifest.resources.any { it.name == SUBTITLES_RESOURCE }) {
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text(stringResource(R.string.addon_subtitles_chip)) },
-                        shape = NexusTheme.shapes.chip,
-                    )
-                }
-                AssistChip(
-                    onClick = {},
-                    label = { Text(host) },
-                    shape = NexusTheme.shapes.chip,
+            AddonChipsFlowRow(
+                addon = addon,
+                host = host,
+                modifier = Modifier.alpha(contentAlpha),
+            )
+
+            if (profileCount >= 2) {
+                AddonShareSwitchRow(
+                    shared = addon.shared,
+                    onToggle = { checked ->
+                        if (checked) {
+                            showShareConfirmDialog = true
+                        } else {
+                            onToggleShared(false)
+                        }
+                    },
                 )
             }
 
@@ -450,6 +442,265 @@ private fun AddonFamilyModeLock() {
             text = stringResource(R.string.addon_hidden_by_family_mode),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+@Composable
+fun SharedAddonCard(
+    addon: Addon,
+    onToggleEnabled: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    isFamilyMode: Boolean = false,
+) {
+    val spacing = NexusTheme.spacing
+    val ownerName = (addon.owner as? AddonOwner.Other)?.name.orEmpty()
+    val isLockedAdult = isFamilyMode && addon.isAdult
+    val contentAlpha = if (addon.enabled && !isLockedAdult) 1f else DISABLED_ALPHA
+
+    NexusCard(modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(spacing.md),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .alpha(contentAlpha),
+                horizontalArrangement = Arrangement.spacedBy(spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AddonLogo(
+                    logoUrl = addon.manifest.logo,
+                    addonName = addon.manifest.name,
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(spacing.xxs),
+                ) {
+                    Text(
+                        text = addon.manifest.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "v${addon.manifest.version}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Box(
+                            modifier =
+                                Modifier
+                                    .clip(NexusTheme.shapes.chip)
+                                    .background(MaterialTheme.colorScheme.secondaryContainer)
+                                    .padding(horizontal = spacing.xs, vertical = spacing.xxs),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.addon_shared_by, ownerName),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (addon.manifest.description.isNotBlank()) {
+                Text(
+                    text = addon.manifest.description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.alpha(contentAlpha),
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.addon_use_in_profile),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    val useInProfileDesc = stringResource(R.string.addon_use_in_profile)
+                    Switch(
+                        checked = if (isLockedAdult) false else addon.enabled,
+                        enabled = !isLockedAdult,
+                        onCheckedChange = { checked ->
+                            if (!isLockedAdult) {
+                                onToggleEnabled(checked)
+                            }
+                        },
+                        modifier =
+                            Modifier.semantics {
+                                contentDescription = useInProfileDesc
+                            },
+                    )
+                    if (isLockedAdult) {
+                        AddonFamilyModeLock()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Preview(name = "SharedAddonCard")
+@Composable
+internal fun SharedAddonCardPreview() {
+    NexusTheme {
+        SharedAddonCard(
+            addon =
+                Addon(
+                    transportUrl = "https://v3-cinemeta.strem.io/",
+                    manifest =
+                        AddonManifest(
+                            id = "org.stremio.cinemeta",
+                            version = "3.0.14",
+                            name = "Cinemeta",
+                            description = "Official movie directory",
+                            logo = null,
+                            background = null,
+                            types = listOf("movie"),
+                            idPrefixes = null,
+                            resources = emptyList(),
+                            catalogs = emptyList(),
+                            behaviorHints =
+                                ManifestHints(
+                                    adult = false,
+                                    p2p = false,
+                                    configurable = false,
+                                    configurationRequired = false,
+                                ),
+                        ),
+                    enabled = false,
+                    position = 0,
+                    source = AddonSource.LOCAL,
+                    installedAt = 0L,
+                    shared = false,
+                    owner = AddonOwner.Other(2L, "Alice"),
+                ),
+            onToggleEnabled = {},
+        )
+    }
+}
+
+@Composable
+private fun AddonShareConfirmDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(R.string.addon_share_title))
+        },
+        text = {
+            Text(stringResource(R.string.addon_share_confirm_message))
+        },
+        confirmButton = {
+            NexusTextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.addon_share_confirm_action))
+            }
+        },
+        dismissButton = {
+            NexusTextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.addon_dialog_cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun AddonShareSwitchRow(
+    shared: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    val shareTitle = stringResource(R.string.addon_share_title)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = shareTitle,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Switch(
+            checked = shared,
+            onCheckedChange = onToggle,
+            modifier =
+                Modifier.semantics {
+                    contentDescription = shareTitle
+                },
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AddonChipsFlowRow(
+    addon: Addon,
+    host: String,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = NexusTheme.spacing
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
+        if (addon.manifest.catalogs.isNotEmpty()) {
+            SuggestionChip(
+                onClick = {},
+                label = { Text(stringResource(R.string.addon_catalogs_chip)) },
+                shape = NexusTheme.shapes.chip,
+            )
+        }
+        if (addon.manifest.resources.any { it.name == META_RESOURCE }) {
+            SuggestionChip(
+                onClick = {},
+                label = { Text(stringResource(R.string.addon_meta_chip)) },
+                shape = NexusTheme.shapes.chip,
+            )
+        }
+        if (addon.manifest.resources.any { it.name == STREAM_RESOURCE }) {
+            SuggestionChip(
+                onClick = {},
+                label = { Text(stringResource(R.string.addon_streams_chip)) },
+                shape = NexusTheme.shapes.chip,
+            )
+        }
+        if (addon.manifest.resources.any { it.name == SUBTITLES_RESOURCE }) {
+            SuggestionChip(
+                onClick = {},
+                label = { Text(stringResource(R.string.addon_subtitles_chip)) },
+                shape = NexusTheme.shapes.chip,
+            )
+        }
+        AssistChip(
+            onClick = {},
+            label = { Text(host) },
+            shape = NexusTheme.shapes.chip,
         )
     }
 }

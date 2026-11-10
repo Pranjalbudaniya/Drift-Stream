@@ -32,6 +32,7 @@ class ProfileRepositoryImpl
     ) : ProfileRepository {
         private val profileDao = database.profileDao()
         private val addonDao = database.addonDao()
+        private val profileAddonPrefsDao = database.profileAddonPrefsDao()
         private val progressDao = database.progressDao()
         private val libraryDao = database.libraryDao()
         private val searchHistoryDao = database.searchHistoryDao()
@@ -147,6 +148,7 @@ class ProfileRepositoryImpl
                     return@withContext DeleteResult.RefusedActive
                 }
                 transactionRunner.run {
+                    profileAddonPrefsDao.deleteAllForProfile(id)
                     addonDao.deleteAllForProfile(id)
                     progressDao.deleteAllForProfile(id)
                     libraryDao.deleteAllForProfile(id)

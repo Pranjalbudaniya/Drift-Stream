@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.drift.stream.domain.repository.AppStateRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -40,6 +41,26 @@ class AppStateRepositoryImpl
             }
         }
 
+        override val defaultAddonsSeededProfiles: Flow<Set<Long>> =
+            dataStore.data
+                .catch { exception ->
+                    if (exception is IOException || exception is CorruptionException) {
+                        emit(emptyPreferences())
+                    } else {
+                        throw exception
+                    }
+                }.map { prefs ->
+                    val stringSet = prefs[DEFAULT_ADDONS_SEEDED_PROFILES_KEY] ?: emptySet()
+                    stringSet.mapNotNull { it.toLongOrNull() }.toSet()
+                }.distinctUntilChanged()
+
+        override suspend fun markDefaultAddonsSeeded(profileId: Long) {
+            dataStore.edit { prefs ->
+                val current = prefs[DEFAULT_ADDONS_SEEDED_PROFILES_KEY] ?: emptySet()
+                prefs[DEFAULT_ADDONS_SEEDED_PROFILES_KEY] = current + profileId.toString()
+            }
+        }
+
         override val lastActiveProfileId: Flow<Long?> =
             dataStore.data
                 .catch { exception ->
@@ -60,6 +81,7 @@ class AppStateRepositoryImpl
 
         companion object {
             val DEFAULT_ADDONS_SEEDED_KEY = booleanPreferencesKey("default_addons_seeded")
+            val DEFAULT_ADDONS_SEEDED_PROFILES_KEY = stringSetPreferencesKey("default_addons_seeded_profiles")
             val LAST_ACTIVE_PROFILE_ID_KEY = longPreferencesKey("last_active_profile_id")
         }
     }

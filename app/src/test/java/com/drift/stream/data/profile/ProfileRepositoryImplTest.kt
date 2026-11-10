@@ -5,6 +5,7 @@ import com.drift.stream.data.local.db.TransactionRunner
 import com.drift.stream.data.local.db.dao.AddonDao
 import com.drift.stream.data.local.db.dao.DownloadDao
 import com.drift.stream.data.local.db.dao.LibraryDao
+import com.drift.stream.data.local.db.dao.ProfileAddonPrefsDao
 import com.drift.stream.data.local.db.dao.ProfileDao
 import com.drift.stream.data.local.db.dao.ProgressDao
 import com.drift.stream.data.local.db.dao.SearchHistoryDao
@@ -34,10 +35,12 @@ class ProfileRepositoryImplTest {
     private fun mockDatabase(
         profileDao: ProfileDao,
         addonDao: AddonDao = mockk(relaxed = true),
+        profileAddonPrefsDao: ProfileAddonPrefsDao = mockk(relaxed = true),
     ): NexusDatabase {
         val database = mockk<NexusDatabase>()
         every { database.profileDao() } returns profileDao
         every { database.addonDao() } returns addonDao
+        every { database.profileAddonPrefsDao() } returns profileAddonPrefsDao
         every { database.progressDao() } returns mockk(relaxed = true)
         every { database.libraryDao() } returns mockk(relaxed = true)
         every { database.searchHistoryDao() } returns mockk(relaxed = true)
@@ -215,6 +218,7 @@ class ProfileRepositoryImplTest {
             val libraryDao = mockk<LibraryDao>(relaxed = true)
             val searchHistoryDao = mockk<SearchHistoryDao>(relaxed = true)
             val downloadDao = mockk<DownloadDao>(relaxed = true)
+            val profileAddonPrefsDao = mockk<ProfileAddonPrefsDao>(relaxed = true)
 
             var transactionRuns = 0
             val transactionRunner =
@@ -228,6 +232,7 @@ class ProfileRepositoryImplTest {
             val database = mockk<NexusDatabase>()
             every { database.profileDao() } returns profileDao
             every { database.addonDao() } returns addonDao
+            every { database.profileAddonPrefsDao() } returns profileAddonPrefsDao
             every { database.progressDao() } returns progressDao
             every { database.libraryDao() } returns libraryDao
             every { database.searchHistoryDao() } returns searchHistoryDao
@@ -248,6 +253,7 @@ class ProfileRepositoryImplTest {
             assertEquals(DeleteResult.Deleted, result)
             assertEquals(1, transactionRuns)
 
+            coVerify(exactly = 1) { profileAddonPrefsDao.deleteAllForProfile(2L) }
             coVerify(exactly = 1) { addonDao.deleteAllForProfile(2L) }
             coVerify(exactly = 1) { progressDao.deleteAllForProfile(2L) }
             coVerify(exactly = 1) { libraryDao.deleteAllForProfile(2L) }
@@ -315,5 +321,25 @@ class ProfileRepositoryImplTest {
             assertEquals(DeleteResult.Deleted, result)
             assertTrue(storesDeleteCalledAfterTx)
             verify(exactly = 1) { profileDataStores.delete(2L) }
+        }
+
+    @Test
+    fun SD1_deleteProfile_removesPrefRowsInBothDirections() =
+        runTest {
+            val profileDao = mockk<ProfileDao>(relaxed = true)
+            val nonOwner = ProfileEntity(2L, "Guest", 1, null, false, false, null, null, null, 1000L, 1000L, 1)
+            coEvery { profileDao.getById(2L) } returns nonOwner
+            coEvery { profileDao.count() } returns 2
+
+            val profileAddonPrefsDao = mockk<ProfileAddonPrefsDao>(relaxed = true)
+            val repository =
+                createRepository(
+                    database = mockDatabase(profileDao = profileDao, profileAddonPrefsDao = profileAddonPrefsDao),
+                    activeProfileProvider = FakeActiveProfileProvider(1L),
+                )
+
+            val result = repository.delete(2L)
+            assertEquals(DeleteResult.Deleted, result)
+            coVerify(exactly = 1) { profileAddonPrefsDao.deleteAllForProfile(2L) }
         }
 }

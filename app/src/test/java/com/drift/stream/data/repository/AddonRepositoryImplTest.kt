@@ -3,17 +3,20 @@ package com.drift.stream.data.repository
 import app.cash.turbine.test
 import com.drift.stream.data.local.db.TransactionRunner
 import com.drift.stream.data.local.db.dao.FakeAddonDao
+import com.drift.stream.data.local.db.dao.FakeProfileAddonPrefsDao
 import com.drift.stream.data.local.db.entity.AddonEntity
 import com.drift.stream.data.remote.addon.AddonRemoteDataSource
 import com.drift.stream.data.remote.addon.FetchedManifest
 import com.drift.stream.di.NetworkModule
 import com.drift.stream.domain.model.AddonManifest
+import com.drift.stream.domain.model.AddonOwner
 import com.drift.stream.domain.model.AddonSource
 import com.drift.stream.domain.model.AppError
 import com.drift.stream.domain.model.ManifestHints
 import com.drift.stream.domain.model.Outcome
 import com.drift.stream.domain.model.ResourceSpec
 import com.drift.stream.domain.repository.ContentPrefsRepository
+import com.drift.stream.testutil.FakeActiveProfileProvider
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -42,6 +45,8 @@ private class FakeContentPrefsRepository(
 @OptIn(ExperimentalCoroutinesApi::class)
 class AddonRepositoryImplTest {
     private val fakeDao = FakeAddonDao()
+    private val fakePrefsDao = FakeProfileAddonPrefsDao(fakeDao)
+    private val activeProfile = FakeActiveProfileProvider(1L)
     private val remoteDataSource: AddonRemoteDataSource = mockk()
     private val passThroughRunner =
         object : TransactionRunner {
@@ -55,6 +60,8 @@ class AddonRepositoryImplTest {
     private val repository =
         AddonRepositoryImpl(
             addonDao = fakeDao,
+            profileAddonPrefsDao = fakePrefsDao,
+            activeProfile = activeProfile,
             remoteDataSource = remoteDataSource,
             transactionRunner = passThroughRunner,
             json = json,
@@ -68,6 +75,7 @@ class AddonRepositoryImplTest {
         name: String = "Example Addon",
         version: String = "1.0.0",
         hasResources: Boolean = true,
+        adult: Boolean = false,
     ): AddonManifest =
         AddonManifest(
             id = id,
@@ -82,7 +90,7 @@ class AddonRepositoryImplTest {
             catalogs = emptyList(),
             behaviorHints =
                 ManifestHints(
-                    adult = false,
+                    adult = adult,
                     p2p = false,
                     configurable = false,
                     configurationRequired = false,
@@ -406,5 +414,314 @@ class AddonRepositoryImplTest {
             val refreshed = (refreshOutcome as Outcome.Success).value
             assertEquals("Refreshed Name", refreshed.manifest.name)
             assertEquals("1.0.1", refreshed.manifest.version)
+        }
+
+    @Test
+    fun AD1_installAndList_areScopedPerProfile() =
+        runTest {
+            val m1 = sampleManifest("org.addon1", "Addon 1")
+            val r1 = sampleRawJson("org.addon1", "Addon 1")
+            coEvery { remoteDataSource.manifestWithRaw("https://addon1.com/") } returns
+                Outcome.Success(FetchedManifest(m1, r1))
+
+            val m2 = sampleManifest("org.addon2", "Addon 2")
+            val r2 = sampleRawJson("org.addon2", "Addon 2")
+            coEvery { remoteDataSource.manifestWithRaw("https://addon2.com/") } returns
+                Outcome.Success(FetchedManifest(m2, r2))
+
+            // Active is Profile 1
+            repository.install("https://addon1.com")
+            val profile1Addons = repository.observeAll().first()
+            assertEquals(1, profile1Addons.size)
+            assertEquals("https://addon1.com/", profile1Addons[0].transportUrl)
+
+            // Switch to Profile 2
+            activeProfile.setActive(2L)
+            val profile2Initial = repository.observeAll().first()
+            assertTrue(profile2Initial.isEmpty())
+
+            repository.install("https://addon2.com")
+            val profile2Addons = repository.observeAll().first()
+            assertEquals(1, profile2Addons.size)
+            assertEquals("https://addon2.com/", profile2Addons[0].transportUrl)
+
+            // Switch back to Profile 1
+            activeProfile.setActive(1L)
+            val profile1AddonsAgain = repository.observeAll().first()
+            assertEquals(1, profile1AddonsAgain.size)
+            assertEquals("https://addon1.com/", profile1AddonsAgain[0].transportUrl)
+        }
+
+    @Test
+    fun AD2_remove_affectsOnlyTheActiveProfile_andRenumbersItsList() =
+        runTest {
+            val m = sampleManifest()
+            val r = sampleRawJson()
+            coEvery { remoteDataSource.manifestWithRaw(any()) } returns Outcome.Success(FetchedManifest(m, r))
+
+            // Profile 1 has 3 addons
+            repository.install("https://addon1.com")
+            repository.install("https://addon2.com")
+            repository.install("https://addon3.com")
+
+            // Profile 2 has 2 addons
+            activeProfile.setActive(2L)
+            repository.install("https://addon1.com")
+            repository.install("https://addon2.com")
+
+            // Remove addon2 in Profile 2
+            repository.remove("https://addon2.com")
+            val profile2Remaining = repository.observeAll().first()
+            assertEquals(1, profile2Remaining.size)
+            assertEquals("https://addon1.com/", profile2Remaining[0].transportUrl)
+            assertEquals(0, profile2Remaining[0].position)
+
+            // Switch to Profile 1: still has 3 addons
+            activeProfile.setActive(1L)
+            val profile1All = repository.observeAll().first()
+            assertEquals(3, profile1All.size)
+            assertEquals(listOf(0, 1, 2), profile1All.map { it.position })
+
+            // Remove addon2 in Profile 1 -> renumbers addon3 to position 1
+            repository.remove("https://addon2.com")
+            val profile1Remaining = repository.observeAll().first()
+            assertEquals(
+                listOf("https://addon1.com/", "https://addon3.com/"),
+                profile1Remaining.map { it.transportUrl },
+            )
+            assertEquals(listOf(0, 1), profile1Remaining.map { it.position })
+        }
+
+    @Test
+    fun AD3_move_reordersOnlyOwnAddons() =
+        runTest {
+            val m = sampleManifest()
+            val r = sampleRawJson()
+            coEvery { remoteDataSource.manifestWithRaw(any()) } returns Outcome.Success(FetchedManifest(m, r))
+
+            // Profile 1
+            repository.install("https://addon1.com")
+            repository.install("https://addon2.com")
+            repository.install("https://addon3.com")
+
+            // Profile 2
+            activeProfile.setActive(2L)
+            repository.install("https://addon1.com")
+            repository.install("https://addon2.com")
+
+            // Move in Profile 1
+            activeProfile.setActive(1L)
+            repository.move("https://addon1.com", 2)
+            val p1Order = repository.observeAll().first().map { it.transportUrl }
+            assertEquals(listOf("https://addon2.com/", "https://addon3.com/", "https://addon1.com/"), p1Order)
+
+            // Profile 2 order unchanged
+            activeProfile.setActive(2L)
+            val p2Order = repository.observeAll().first().map { it.transportUrl }
+            assertEquals(listOf("https://addon1.com/", "https://addon2.com/"), p2Order)
+        }
+
+    @Test
+    fun AD4_setEnabled_isPerProfile() =
+        runTest {
+            val m = sampleManifest()
+            val r = sampleRawJson()
+            coEvery { remoteDataSource.manifestWithRaw(any()) } returns Outcome.Success(FetchedManifest(m, r))
+
+            repository.install("https://addon1.com")
+            activeProfile.setActive(2L)
+            repository.install("https://addon1.com")
+
+            activeProfile.setActive(1L)
+            repository.setEnabled("https://addon1.com", false)
+            assertFalse(repository.observeAll().first()[0].enabled)
+
+            activeProfile.setActive(2L)
+            assertTrue(repository.observeAll().first()[0].enabled)
+        }
+
+    @Test
+    fun AD5_observeActive_appliesFamilyModePerProfile() =
+        runTest {
+            val normalM = sampleManifest("org.normal", "Normal")
+            val normalR = sampleRawJson("org.normal", "Normal")
+            val adultM = sampleManifest("org.adult", "Adult", adult = true)
+            val adultR = sampleRawJson("org.adult", "Adult", adult = true)
+
+            coEvery { remoteDataSource.manifestWithRaw("https://normal.com/") } returns
+                Outcome.Success(FetchedManifest(normalM, normalR))
+            coEvery { remoteDataSource.manifestWithRaw("https://adult.com/") } returns
+                Outcome.Success(FetchedManifest(adultM, adultR))
+
+            repository.install("https://normal.com")
+            repository.install("https://adult.com")
+
+            fakeContentPrefsRepository.setFamilyMode(false)
+            assertEquals(2, repository.observeActive().first().size)
+
+            fakeContentPrefsRepository.setFamilyMode(true)
+            val filtered = repository.observeActive().first()
+            assertEquals(1, filtered.size)
+            assertEquals("https://normal.com/", filtered[0].transportUrl)
+        }
+
+    @Test
+    fun SH1_sharedAddon_appearsForAnotherProfile_disabledByDefault() =
+        runTest {
+            val m = sampleManifest("org.shared", "Shared Addon")
+            val r = sampleRawJson("org.shared", "Shared Addon")
+            coEvery { remoteDataSource.manifestWithRaw("https://shared.com/") } returns
+                Outcome.Success(FetchedManifest(m, r))
+
+            repository.install("https://shared.com")
+            repository.setShared("https://shared.com", true)
+
+            activeProfile.setActive(2L)
+            val list = repository.observeAll().first()
+            assertEquals(1, list.size)
+            val shared = list[0]
+            assertEquals("https://shared.com/", shared.transportUrl)
+            assertFalse(shared.enabled)
+            assertEquals(AddonOwner.Other(1L, "Me"), shared.owner)
+        }
+
+    @Test
+    fun SH2_unsharedAddon_isNotVisibleToOthers() =
+        runTest {
+            val m = sampleManifest()
+            val r = sampleRawJson()
+            coEvery { remoteDataSource.manifestWithRaw("https://shared.com/") } returns
+                Outcome.Success(FetchedManifest(m, r))
+
+            repository.install("https://shared.com")
+            repository.setShared("https://shared.com", true)
+
+            activeProfile.setActive(2L)
+            assertEquals(1, repository.observeAll().first().size)
+
+            activeProfile.setActive(1L)
+            repository.setShared("https://shared.com", false)
+
+            activeProfile.setActive(2L)
+            assertTrue(repository.observeAll().first().isEmpty())
+        }
+
+    @Test
+    fun SH3_enabledSharedAddon_joinsTheActiveList_afterOwnOnes() =
+        runTest {
+            val m1 = sampleManifest("org.addon1", "Profile 1 Shared")
+            val r1 = sampleRawJson("org.addon1", "Profile 1 Shared")
+            val m2 = sampleManifest("org.addon2", "Profile 2 Own")
+            val r2 = sampleRawJson("org.addon2", "Profile 2 Own")
+
+            coEvery { remoteDataSource.manifestWithRaw("https://addon1.com/") } returns
+                Outcome.Success(FetchedManifest(m1, r1))
+            coEvery { remoteDataSource.manifestWithRaw("https://addon2.com/") } returns
+                Outcome.Success(FetchedManifest(m2, r2))
+
+            repository.install("https://addon1.com")
+            repository.setShared("https://addon1.com", true)
+
+            activeProfile.setActive(2L)
+            repository.install("https://addon2.com")
+
+            // Enable the shared addon for Profile 2
+            repository.setSharedEnabled(1L, "https://addon1.com", true)
+
+            fakeContentPrefsRepository.setFamilyMode(false)
+            val activeList = repository.observeActive().first()
+            assertEquals(2, activeList.size)
+            // Own addon first
+            assertEquals("https://addon2.com/", activeList[0].transportUrl)
+            assertEquals(AddonOwner.Own, activeList[0].owner)
+            // Shared addon second
+            assertEquals("https://addon1.com/", activeList[1].transportUrl)
+            assertEquals(AddonOwner.Other(1L, "Me"), activeList[1].owner)
+        }
+
+    @Test
+    fun SH4_ownAddonWithTheSameUrl_hidesTheSharedOne() =
+        runTest {
+            val m = sampleManifest("org.shared", "Addon")
+            val r = sampleRawJson("org.shared", "Addon")
+            coEvery { remoteDataSource.manifestWithRaw("https://addon.com/") } returns
+                Outcome.Success(FetchedManifest(m, r))
+
+            repository.install("https://addon.com")
+            repository.setShared("https://addon.com", true)
+
+            activeProfile.setActive(2L)
+            val beforeOwn = repository.observeAll().first()
+            assertEquals(1, beforeOwn.size)
+            assertEquals(AddonOwner.Other(1L, "Me"), beforeOwn[0].owner)
+
+            // Profile 2 installs its own copy
+            repository.install("https://addon.com")
+            val afterOwn = repository.observeAll().first()
+            assertEquals(1, afterOwn.size)
+            assertEquals(AddonOwner.Own, afterOwn[0].owner)
+        }
+
+    @Test
+    fun SH5_unshare_deletesTheOthersPrefs() =
+        runTest {
+            val m = sampleManifest()
+            val r = sampleRawJson()
+            coEvery { remoteDataSource.manifestWithRaw("https://addon.com/") } returns
+                Outcome.Success(FetchedManifest(m, r))
+
+            repository.install("https://addon.com")
+            repository.setShared("https://addon.com", true)
+
+            activeProfile.setActive(2L)
+            repository.setSharedEnabled(1L, "https://addon.com", true)
+            assertTrue(fakePrefsDao.isEnabled(2L, 1L, "https://addon.com/"))
+
+            activeProfile.setActive(1L)
+            repository.setShared("https://addon.com", false)
+            assertFalse(fakePrefsDao.isEnabled(2L, 1L, "https://addon.com/"))
+        }
+
+    @Test
+    fun SH6_ownerRemovesAddon_deletesTheOthersPrefs() =
+        runTest {
+            val m = sampleManifest()
+            val r = sampleRawJson()
+            coEvery { remoteDataSource.manifestWithRaw("https://addon.com/") } returns
+                Outcome.Success(FetchedManifest(m, r))
+
+            repository.install("https://addon.com")
+            repository.setShared("https://addon.com", true)
+
+            activeProfile.setActive(2L)
+            repository.setSharedEnabled(1L, "https://addon.com", true)
+            assertTrue(fakePrefsDao.isEnabled(2L, 1L, "https://addon.com/"))
+
+            activeProfile.setActive(1L)
+            repository.remove("https://addon.com")
+            assertFalse(fakePrefsDao.isEnabled(2L, 1L, "https://addon.com/"))
+        }
+
+    @Test
+    fun SH7_sharedByOthers_cannotBeRemovedOrMoved() =
+        runTest {
+            val m = sampleManifest()
+            val r = sampleRawJson()
+            coEvery { remoteDataSource.manifestWithRaw("https://addon.com/") } returns
+                Outcome.Success(FetchedManifest(m, r))
+
+            repository.install("https://addon.com")
+            repository.setShared("https://addon.com", true)
+
+            activeProfile.setActive(2L)
+            // Profile 2 tries to remove or move the shared addon
+            repository.remove("https://addon.com")
+            repository.move("https://addon.com", 0)
+
+            // Switch to Profile 1: addon is still there
+            activeProfile.setActive(1L)
+            val p1List = repository.observeAll().first()
+            assertEquals(1, p1List.size)
+            assertEquals("https://addon.com/", p1List[0].transportUrl)
         }
 }

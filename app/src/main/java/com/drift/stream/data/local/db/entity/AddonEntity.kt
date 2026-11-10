@@ -21,4 +21,5 @@ data class AddonEntity(
     val source: AddonSource,
     val installedAt: Long,
     @ColumnInfo(defaultValue = "1") val profileId: Long = 1L,
+    @ColumnInfo(defaultValue = "0") val shared: Boolean = false,
 )

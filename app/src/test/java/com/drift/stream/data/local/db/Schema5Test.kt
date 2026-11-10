@@ -103,4 +103,41 @@ class Schema5Test {
             assertEquals("Table $table profileId defaultValue must be 1", "1", defaultVal)
         }
     }
+
+    @Test
+    fun SCH4_schema6_hasSharedColumnAndPrefsTable() {
+        val candidates =
+            listOf(
+                File("schemas/com.drift.stream.data.local.db.NexusDatabase/6.json"),
+                File("app/schemas/com.drift.stream.data.local.db.NexusDatabase/6.json"),
+                File(System.getProperty("user.dir"), "schemas/com.drift.stream.data.local.db.NexusDatabase/6.json"),
+                File(System.getProperty("user.dir"), "app/schemas/com.drift.stream.data.local.db.NexusDatabase/6.json"),
+            )
+        val file =
+            candidates.firstOrNull { it.exists() }
+                ?: error("Cannot find 6.json in: $candidates (user.dir=${System.getProperty("user.dir")})")
+
+        val root = Json.parseToJsonElement(file.readText()).jsonObject
+        val entities = root["database"]!!.jsonObject["entities"]!!.jsonArray
+        val tables =
+            entities.associate {
+                val obj = it.jsonObject
+                obj["tableName"]!!.jsonPrimitive.content to obj
+            }
+
+        val addons = tables["addons"]
+        assertNotNull("addons table must exist in 6.json", addons)
+        val sharedCol =
+            addons!!["fields"]!!.jsonArray.map { it.jsonObject }.firstOrNull {
+                it["columnName"]!!.jsonPrimitive.content == "shared"
+            }
+        assertNotNull("addons.shared column must exist", sharedCol)
+        assertTrue("addons.shared must be notNull", sharedCol!!["notNull"]!!.jsonPrimitive.boolean)
+        assertEquals("0", sharedCol["defaultValue"]!!.jsonPrimitive.content)
+
+        val prefs = tables["profile_addon_prefs"]
+        assertNotNull("profile_addon_prefs table must exist in 6.json", prefs)
+        val pk = prefs!!["primaryKey"]!!.jsonObject["columnNames"]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertEquals(listOf("profileId", "ownerProfileId", "transportUrl"), pk)
+    }
 }

@@ -29,4 +29,15 @@ interface AddonRepository {
         transportUrl: String,
         toPosition: Int,
     )
+
+    suspend fun setShared(
+        transportUrl: String,
+        shared: Boolean,
+    )
+
+    suspend fun setSharedEnabled(
+        ownerProfileId: Long,
+        transportUrl: String,
+        enabled: Boolean,
+    )
 }

@@ -7,6 +7,7 @@ import com.drift.stream.data.local.db.dao.AddonDao
 import com.drift.stream.data.local.db.dao.DownloadDao
 import com.drift.stream.data.local.db.dao.LibraryDao
 import com.drift.stream.data.local.db.dao.MetaCacheDao
+import com.drift.stream.data.local.db.dao.ProfileAddonPrefsDao
 import com.drift.stream.data.local.db.dao.ProfileDao
 import com.drift.stream.data.local.db.dao.ProgressDao
 import com.drift.stream.data.local.db.dao.SearchHistoryDao
@@ -14,6 +15,7 @@ import com.drift.stream.data.local.db.entity.AddonEntity
 import com.drift.stream.data.local.db.entity.DownloadEntity
 import com.drift.stream.data.local.db.entity.LibraryItemEntity
 import com.drift.stream.data.local.db.entity.MetaCacheEntity
+import com.drift.stream.data.local.db.entity.ProfileAddonPrefEntity
 import com.drift.stream.data.local.db.entity.ProfileEntity
 import com.drift.stream.data.local.db.entity.SearchHistoryEntity
 import com.drift.stream.data.local.db.entity.SkipSegmentCacheEntity
@@ -29,10 +31,12 @@ import com.drift.stream.data.local.db.entity.WatchProgressEntity
         MetaCacheEntity::class,
         DownloadEntity::class,
         ProfileEntity::class,
+        ProfileAddonPrefEntity::class,
     ],
-    version = 5,
+    version = 6,
     autoMigrations = [
         AutoMigration(from = 4, to = 5),
+        AutoMigration(from = 5, to = 6),
     ],
     exportSchema = true,
 )
@@ -50,4 +54,6 @@ abstract class NexusDatabase : RoomDatabase() {
     abstract fun downloadDao(): DownloadDao
 
     abstract fun profileDao(): ProfileDao
+
+    abstract fun profileAddonPrefsDao(): ProfileAddonPrefsDao
 }

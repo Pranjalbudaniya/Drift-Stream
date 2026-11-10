@@ -12,6 +12,7 @@ import com.drift.stream.data.local.db.dao.AddonDao
 import com.drift.stream.data.local.db.dao.DownloadDao
 import com.drift.stream.data.local.db.dao.LibraryDao
 import com.drift.stream.data.local.db.dao.MetaCacheDao
+import com.drift.stream.data.local.db.dao.ProfileAddonPrefsDao
 import com.drift.stream.data.local.db.dao.ProfileDao
 import com.drift.stream.data.local.db.dao.ProgressDao
 import com.drift.stream.data.local.db.dao.SearchHistoryDao
@@ -60,6 +61,9 @@ object DatabaseModule {
 
     @Provides
     fun provideProfileDao(database: NexusDatabase): ProfileDao = database.profileDao()
+
+    @Provides
+    fun provideProfileAddonPrefsDao(database: NexusDatabase): ProfileAddonPrefsDao = database.profileAddonPrefsDao()
 
     @Provides
     @Singleton

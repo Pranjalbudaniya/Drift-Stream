@@ -53,4 +53,29 @@ class DaoScopeGuardTest {
         assertTrue("Expected to inspect multiple queries", totalQueries >= 15)
         assertTrue("Expected 2 join queries in ProgressDao", joinQueries == 2)
     }
+
+    @Test
+    fun DS2_addonDaos_everyQueryMentionsProfileId() {
+        val daoFiles = listOf("AddonDao.kt", "ProfileAddonPrefsDao.kt")
+        val queryRegex = Regex("""@Query\((.*?)\)\s*(?:fun|suspend fun)""", setOf(RegexOption.DOT_MATCHES_ALL))
+
+        var totalQueries = 0
+
+        for (fileName in daoFiles) {
+            val source = resolveDaoSource(fileName)
+            val matches = queryRegex.findAll(source).toList()
+            assertTrue("Expected queries in $fileName", matches.isNotEmpty())
+
+            for (match in matches) {
+                totalQueries++
+                val queryBody = match.groupValues[1]
+                assertTrue(
+                    "Query in $fileName must contain profileId: $queryBody",
+                    queryBody.contains("profileId", ignoreCase = true),
+                )
+            }
+        }
+
+        assertTrue("Expected multiple queries in addon DAOs", totalQueries >= 8)
+    }
 }

@@ -162,7 +162,9 @@
     <string name="addon_share_title">Share with other profiles</string>
     <string name="addon_share_confirm_message">Other profiles on this phone will be able to use this addon, including anything private in its address. They will not see the address.</string>
     <string name="addon_share_confirm_action">Share</string>
+    <string name="addon_share_failed">Could not change sharing.</string>
     <string name="addon_shared_section">Shared with you</string>
+    <string name="addon_shared_hidden_note">Some shared addons are hidden because you already have them.</string>
     <string name="addon_shared_by">Shared by %1$s</string>
     <string name="addon_use_in_profile">Use in this profile</string>
 

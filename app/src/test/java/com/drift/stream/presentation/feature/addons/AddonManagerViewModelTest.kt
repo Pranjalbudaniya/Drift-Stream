@@ -28,6 +28,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -166,6 +168,7 @@ class AddonManagerViewModelTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         every { addonRepository.observeAll() } returns flowOf(emptyList())
+        every { addonRepository.observeHiddenSharedCount() } returns flowOf(0)
         every { contentPrefsRepository.familyMode } returns familyModeFlow
         every { profileRepository.profiles } returns profilesFlow
         coEvery { ensureDefaultAddons() } returns Outcome.Success(Unit)
@@ -450,7 +453,9 @@ class AddonManagerViewModelTest {
     @Test
     fun VM1_addonManager_setShared_callsTheRepository() =
         runTest {
-            coEvery { addonRepository.setShared("https://example.com/manifest.json", true) } returns Unit
+            coEvery {
+                addonRepository.setShared("https://example.com/manifest.json", true)
+            } returns Outcome.Success(Unit)
 
             val viewModel = createViewModel()
             advanceUntilIdle()
@@ -459,6 +464,30 @@ class AddonManagerViewModelTest {
             advanceUntilIdle()
 
             coVerify(exactly = 1) { addonRepository.setShared("https://example.com/manifest.json", true) }
+        }
+
+    @Test
+    fun CM4_viewModel_setSharedFailure_showsTheMessage() =
+        runTest {
+            coEvery {
+                addonRepository.setShared("https://example.com/manifest.json", true)
+            } returns Outcome.Failure(AppError.NotFound)
+
+            val viewModel = createViewModel()
+            advanceUntilIdle()
+
+            val effects = mutableListOf<AddonManagerEffect>()
+            val job = launch { viewModel.effects.toList(effects) }
+
+            viewModel.onEvent(AddonManagerEvent.SetShared("https://example.com/manifest.json", true))
+            advanceUntilIdle()
+
+            assertTrue(
+                effects.any {
+                    it is AddonManagerEffect.ShowMessage && it.messageRes == R.string.addon_share_failed
+                },
+            )
+            job.cancel()
         }
 
     @Test

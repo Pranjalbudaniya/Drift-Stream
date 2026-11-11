@@ -155,7 +155,9 @@ fun DatabaseDevScreen(
                         verticalArrangement = Arrangement.spacedBy(NexusTheme.spacing.xs),
                     ) {
                         state.addons.forEach { item ->
-                            val sub = "pos=${item.position} | enabled=${item.enabled} | host=${item.host}"
+                            val sub =
+                                "pos=${item.position} | enabled=${item.enabled} | " +
+                                    "pId=${item.profileId} | shared=${item.shared} | hash=${item.urlHash}"
                             DebugItemCard(
                                 title = item.name,
                                 subtitle = sub,

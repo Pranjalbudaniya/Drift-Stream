@@ -31,7 +31,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 
-@Suppress("LongParameterList")
+@Suppress("LongParameterList", "TooManyFunctions")
 class AddonRepositoryImpl(
     private val addonDao: AddonDao,
     private val profileAddonPrefsDao: ProfileAddonPrefsDao,
@@ -107,6 +107,11 @@ class AddonRepositoryImpl(
         combine(observeEnabled(), contentPrefsRepository.familyMode) { enabled, familyMode ->
             if (familyMode) enabled.filterNot { it.isAdult } else enabled
         }.distinctUntilChanged()
+
+    override fun observeHiddenSharedCount(): Flow<Int> =
+        activeProfile.scopedFlow { profileId ->
+            addonDao.observeHiddenSharedCount(profileId)
+        }
 
     override suspend fun install(transportUrl: String): Outcome<Addon> {
         val normalizedBaseUrl =
@@ -282,15 +287,21 @@ class AddonRepositoryImpl(
     override suspend fun setShared(
         transportUrl: String,
         shared: Boolean,
-    ) {
+    ): Outcome<Unit> {
         val normalizedBaseUrl = AddonUrlBuilder.normalize(transportUrl)?.toString() ?: transportUrl
         val profileId = activeProfile.requireId()
-        transactionRunner.run {
-            if (addonDao.get(profileId, normalizedBaseUrl) == null) return@run
-            addonDao.setShared(profileId, normalizedBaseUrl, shared)
+        return transactionRunner.run {
+            if (addonDao.get(profileId, normalizedBaseUrl) == null) {
+                return@run Outcome.Failure(AppError.NotFound)
+            }
+            val rows = addonDao.setShared(profileId, normalizedBaseUrl, shared)
+            if (rows <= 0) {
+                return@run Outcome.Failure(AppError.NotFound)
+            }
             if (!shared) {
                 profileAddonPrefsDao.deleteForAddon(profileId, normalizedBaseUrl)
             }
+            Outcome.Success(Unit)
         }
     }
 

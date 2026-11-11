@@ -5,12 +5,15 @@ import com.drift.stream.domain.model.AddonManifest
 import com.drift.stream.domain.model.Outcome
 import kotlinx.coroutines.flow.Flow
 
+@Suppress("TooManyFunctions")
 interface AddonRepository {
     fun observeAll(): Flow<List<Addon>>
 
     fun observeEnabled(): Flow<List<Addon>>
 
     fun observeActive(): Flow<List<Addon>>
+
+    fun observeHiddenSharedCount(): Flow<Int>
 
     suspend fun install(transportUrl: String): Outcome<Addon>
 
@@ -33,7 +36,7 @@ interface AddonRepository {
     suspend fun setShared(
         transportUrl: String,
         shared: Boolean,
-    )
+    ): Outcome<Unit>
 
     suspend fun setSharedEnabled(
         ownerProfileId: Long,

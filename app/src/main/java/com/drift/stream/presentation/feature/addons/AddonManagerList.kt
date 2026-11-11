@@ -152,7 +152,7 @@ private fun AddonLazyColumn(
             }
         }
 
-        if (uiState.profileCount >= 2 && visibleShared.isNotEmpty()) {
+        if (uiState.profileCount >= 2 && (visibleShared.isNotEmpty() || uiState.hiddenSharedCount > 0)) {
             item(key = "header_shared_with_you") {
                 Text(
                     text = stringResource(R.string.addon_shared_section),
@@ -160,6 +160,16 @@ private fun AddonLazyColumn(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = spacing.md, bottom = spacing.xs),
                 )
+            }
+            if (uiState.hiddenSharedCount > 0) {
+                item(key = "note_hidden_shared") {
+                    Text(
+                        text = stringResource(R.string.addon_shared_hidden_note),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = spacing.xs),
+                    )
+                }
             }
             items(
                 items = visibleShared,

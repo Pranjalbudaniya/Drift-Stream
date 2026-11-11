@@ -50,6 +50,9 @@ data class AddonDebugRow(
     val enabled: Boolean,
     val position: Int,
     val host: String,
+    val profileId: Long = 1L,
+    val shared: Boolean = false,
+    val urlHash: String = "",
 )
 
 data class DatabaseDebugState(
@@ -249,6 +252,8 @@ class DatabaseDevViewModel
                     val enabledIdx = cursor.getColumnIndex("enabled")
                     val posIdx = cursor.getColumnIndex("position")
                     val urlIdx = cursor.getColumnIndex("transportUrl")
+                    val profileIdx = cursor.getColumnIndex("profileId")
+                    val sharedIdx = cursor.getColumnIndex("shared")
 
                     while (cursor.moveToNext()) {
                         val transportUrl = cursor.getStringOrEmpty(urlIdx)
@@ -259,12 +264,25 @@ class DatabaseDevViewModel
                                         transportUrl,
                                     ).host ?: transportUrl
                             }.getOrDefault(transportUrl)
+                        val urlHash =
+                            if (transportUrl.isNotEmpty()) {
+                                java.security.MessageDigest
+                                    .getInstance("SHA-256")
+                                    .digest(transportUrl.toByteArray(Charsets.UTF_8))
+                                    .joinToString("") { "%02x".format(it) }
+                                    .take(8)
+                            } else {
+                                ""
+                            }
                         rows.add(
                             AddonDebugRow(
                                 name = cursor.getStringOrEmpty(nameIdx),
                                 enabled = cursor.getIntOrDefault(enabledIdx, 0) == 1,
                                 position = cursor.getIntOrDefault(posIdx, 0),
                                 host = host,
+                                profileId = cursor.getLongOrDefault(profileIdx, 1L),
+                                shared = cursor.getIntOrDefault(sharedIdx, 0) == 1,
+                                urlHash = urlHash,
                             ),
                         )
                     }

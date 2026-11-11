@@ -105,13 +105,28 @@ class FakeAddonDao : AddonDao {
         profileId: Long,
         transportUrl: String,
         shared: Boolean,
-    ) {
+    ): Int {
         val current = addons.value.toMutableMap()
         val key = Pair(profileId, transportUrl)
-        val existing = current[key] ?: return
+        val existing = current[key] ?: return 0
         current[key] = existing.copy(shared = shared)
         addons.value = current
+        return 1
     }
+
+    override fun observeHiddenSharedCount(profileId: Long): Flow<Int> =
+        addons.map { map ->
+            val ownUrls =
+                map.values
+                    .filter { it.profileId == profileId }
+                    .map { it.transportUrl }
+                    .toSet()
+            map.values
+                .filter { it.shared && it.profileId != profileId && it.transportUrl in ownUrls }
+                .map { it.transportUrl }
+                .distinct()
+                .size
+        }
 
     override fun observeSharedByOthers(profileId: Long): Flow<List<SharedAddonRow>> =
         addons.map { map ->

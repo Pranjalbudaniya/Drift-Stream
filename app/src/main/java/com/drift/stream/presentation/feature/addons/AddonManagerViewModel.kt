@@ -78,6 +78,7 @@ data class AddonManagerUiState(
     val failedRefreshAddons: Set<String> = emptySet(),
     val isStoreOpen: Boolean = false,
     val storeInitialCategory: AddonCategory? = null,
+    val hiddenSharedCount: Int = 0,
 ) {
     val visibleAddons: List<Addon>
         get() = AddonFilters.filterInstalled(addons, searchQuery, selectedCategory)
@@ -220,9 +221,8 @@ class AddonManagerViewModel
                     addonRepository.observeAll(),
                     contentPrefsRepository.familyMode,
                     profileRepository.profiles,
-                ) { list, familyMode, profiles ->
-                    Triple(list, familyMode, profiles)
-                }.collect { (list, familyMode, profiles) ->
+                    addonRepository.observeHiddenSharedCount(),
+                ) { list, familyMode, profiles, hiddenCount ->
                     val own = list.filter { it.owner is AddonOwner.Own }
                     val shared = list.filter { it.owner is AddonOwner.Other }
                     _uiState.update { current ->
@@ -232,9 +232,10 @@ class AddonManagerViewModel
                             profileCount = profiles.size,
                             capabilities = list.filter { it.enabled && (!familyMode || !it.isAdult) }.capabilities(),
                             isFamilyMode = familyMode,
+                            hiddenSharedCount = hiddenCount,
                         )
                     }
-                }
+                }.collect { }
             }
             runSeed()
         }
@@ -424,9 +425,7 @@ class AddonManagerViewModel
                 }
 
                 is AddonManagerEvent.SetShared -> {
-                    viewModelScope.launch {
-                        addonRepository.setShared(event.url, event.shared)
-                    }
+                    handleSetShared(event.url, event.shared)
                 }
 
                 is AddonManagerEvent.SetSharedEnabled -> {
@@ -436,6 +435,23 @@ class AddonManagerViewModel
                 }
 
                 else -> {}
+            }
+        }
+
+        private fun handleSetShared(
+            url: String,
+            shared: Boolean,
+        ) {
+            viewModelScope.launch {
+                when (addonRepository.setShared(url, shared)) {
+                    is Outcome.Success -> {
+                        Unit
+                    }
+
+                    is Outcome.Failure -> {
+                        _effects.emit(AddonManagerEffect.ShowMessage(R.string.addon_share_failed))
+                    }
+                }
             }
         }
 

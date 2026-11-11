@@ -45,7 +45,22 @@ interface AddonDao {
         profileId: Long,
         transportUrl: String,
         shared: Boolean,
+    ): Int
+
+    @Query(
+        """
+        SELECT COUNT(DISTINCT a.transportUrl)
+        FROM addons a
+        WHERE a.shared = 1
+          AND a.profileId != :profileId
+          AND EXISTS (
+              SELECT 1 FROM addons own
+              WHERE own.profileId = :profileId
+                AND own.transportUrl = a.transportUrl
+          )
+        """,
     )
+    fun observeHiddenSharedCount(profileId: Long): Flow<Int>
 
     @Query(
         """

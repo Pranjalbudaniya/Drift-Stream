@@ -3,6 +3,8 @@ package com.drift.stream.presentation.feature.profile
 import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.profile.NameCheck
 import com.drift.stream.domain.profile.PROFILE_NAME_MAX_LENGTH
+import com.drift.stream.domain.profile.forceOpaque
+import com.drift.stream.domain.profile.isValidAvatarEmoji
 import com.drift.stream.domain.profile.nextFreeAvatarColor
 import com.drift.stream.domain.profile.normalizeAvatarColor
 import com.drift.stream.domain.profile.validateProfileName
@@ -11,9 +13,12 @@ data class ProfileFormState(
     val name: String,
     val colorIndex: Int,
     val emoji: String?,
+    val customColor: Int? = null,
+    val pendingPhotoPath: String? = null,
     val nameError: NameError? = null,
     val saving: Boolean = false,
     val saveFailed: Boolean = false,
+    val photoError: Boolean = false,
 )
 
 sealed interface NameError {
@@ -39,15 +44,31 @@ sealed interface ProfileFormEvent {
         val emoji: String?,
     ) : ProfileFormEvent
 
+    data class PhotoCropped(
+        val path: String,
+    ) : ProfileFormEvent
+
+    data object AvatarCleared : ProfileFormEvent
+
+    data class CustomColorPicked(
+        val argb: Int,
+    ) : ProfileFormEvent
+
     data object Submit : ProfileFormEvent
 
     data object SaveFailed : ProfileFormEvent
+
+    data object PhotoError : ProfileFormEvent
+
+    data object ClearPhotoError : ProfileFormEvent
 }
 
 data class SubmitRequest(
     val name: String,
     val colorIndex: Int,
     val emoji: String?,
+    val customColor: Int? = null,
+    val pendingPhotoPath: String? = null,
 )
 
 fun truncateToCodePoints(
@@ -70,6 +91,8 @@ fun defaultStateForSetup(owner: Profile): ProfileFormState =
         name = owner.name,
         colorIndex = owner.avatarColor,
         emoji = owner.avatarEmoji,
+        customColor = owner.avatarCustomColor,
+        pendingPhotoPath = null,
     )
 
 fun defaultStateForAdd(existingProfiles: Collection<Profile>): ProfileFormState =
@@ -77,6 +100,8 @@ fun defaultStateForAdd(existingProfiles: Collection<Profile>): ProfileFormState 
         name = "",
         colorIndex = nextFreeAvatarColor(existingProfiles.map { it.avatarColor }),
         emoji = null,
+        customColor = null,
+        pendingPhotoPath = null,
     )
 
 fun reduceProfileForm(
@@ -91,11 +116,55 @@ fun reduceProfileForm(
         }
 
         is ProfileFormEvent.ColorPicked -> {
-            Pair(state.copy(colorIndex = normalizeAvatarColor(event.colorIndex)), null)
+            Pair(
+                state.copy(
+                    colorIndex = normalizeAvatarColor(event.colorIndex),
+                    customColor = null,
+                ),
+                null,
+            )
+        }
+
+        is ProfileFormEvent.CustomColorPicked -> {
+            Pair(
+                state.copy(
+                    customColor = forceOpaque(event.argb),
+                ),
+                null,
+            )
         }
 
         is ProfileFormEvent.EmojiPicked -> {
-            Pair(state.copy(emoji = event.emoji), null)
+            Pair(reduceAvatarEmoji(state, event.emoji), null)
+        }
+
+        is ProfileFormEvent.PhotoCropped -> {
+            Pair(
+                state.copy(
+                    pendingPhotoPath = event.path,
+                    emoji = null,
+                    photoError = false,
+                ),
+                null,
+            )
+        }
+
+        is ProfileFormEvent.AvatarCleared -> {
+            Pair(
+                state.copy(
+                    emoji = null,
+                    pendingPhotoPath = null,
+                ),
+                null,
+            )
+        }
+
+        is ProfileFormEvent.PhotoError -> {
+            Pair(state.copy(photoError = true), null)
+        }
+
+        is ProfileFormEvent.ClearPhotoError -> {
+            Pair(state.copy(photoError = false), null)
         }
 
         is ProfileFormEvent.SaveFailed -> {
@@ -117,7 +186,13 @@ private fun reduceSubmit(
         is NameCheck.Valid -> {
             Pair(
                 state.copy(saving = true, nameError = null, saveFailed = false),
-                SubmitRequest(check.name, state.colorIndex, state.emoji),
+                SubmitRequest(
+                    name = check.name,
+                    colorIndex = state.colorIndex,
+                    emoji = state.emoji,
+                    customColor = state.customColor,
+                    pendingPhotoPath = state.pendingPhotoPath,
+                ),
             )
         }
 
@@ -138,3 +213,13 @@ private fun reduceSubmit(
         }
     }
 }
+
+private fun reduceAvatarEmoji(
+    state: ProfileFormState,
+    emoji: String?,
+): ProfileFormState =
+    if (emoji != null && !isValidAvatarEmoji(emoji)) {
+        state
+    } else {
+        state.copy(emoji = emoji, pendingPhotoPath = null)
+    }

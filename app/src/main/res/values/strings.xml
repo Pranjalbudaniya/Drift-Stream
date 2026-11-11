@@ -945,7 +945,6 @@
     <string name="profile_setup_subtitle">Choose a name and a look for your profile.</string>
     <string name="profile_form_name_label">Name</string>
     <string name="profile_form_color_label">Colour</string>
-    <string name="profile_form_emoji_label">Emoji (optional)</string>
     <string name="profile_form_use_initial">Use the initial</string>
     <string name="profile_form_continue">Continue</string>
     <string name="who_is_watching_title">Who\'s watching?</string>
@@ -973,5 +972,20 @@
     <string name="avatar_color_11">Slate</string>
     <string name="avatar_color_swatch_selected">%1$s, selected</string>
     <string name="avatar_preview_content_description">Avatar preview</string>
+    <string name="avatar_change_badge">Change avatar</string>
+    <string name="avatar_choice_emoji">Emoji</string>
+    <string name="avatar_choice_photo">Photo</string>
+    <string name="avatar_choice_initial">Use the initial</string>
+    <string name="avatar_custom_color">Custom colour</string>
+    <string name="avatar_custom_color_selected">Custom colour, selected</string>
+    <string name="avatar_custom_color_hue">Hue</string>
+    <string name="avatar_custom_color_saturation">Saturation</string>
+    <string name="avatar_custom_color_brightness">Brightness</string>
+    <string name="avatar_action_done">Done</string>
+    <string name="avatar_action_cancel">Cancel</string>
+    <string name="photo_crop_title">Move and zoom</string>
+    <string name="photo_crop_hint">Drag to move, pinch to zoom</string>
+    <string name="photo_open_failed">Couldn\'t open this photo.</string>
+    <string name="profile_add_photo_save_failed">Profile added, but the photo couldn\'t be saved.</string>
 </resources>
 

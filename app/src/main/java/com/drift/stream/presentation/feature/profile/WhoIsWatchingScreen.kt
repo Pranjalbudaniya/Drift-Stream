@@ -20,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -116,6 +117,24 @@ private fun ProfileTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val photoFile =
+        androidx.compose.runtime.remember(profile.id, profile.avatarPhotoStamp) {
+            if (profile.avatarPhotoStamp != null) {
+                java.io.File(context.filesDir, "avatars/${profile.id}.jpg")
+            } else {
+                null
+            }
+        }
+    val memoryCacheKey =
+        androidx.compose.runtime.remember(profile.id, profile.avatarPhotoStamp) {
+            if (profile.avatarPhotoStamp != null) {
+                "avatar:${profile.id}:${profile.avatarPhotoStamp}"
+            } else {
+                null
+            }
+        }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier =
@@ -132,6 +151,9 @@ private fun ProfileTile(
             emoji = profile.avatarEmoji,
             name = profile.name,
             size = AvatarTileSize,
+            customColor = profile.avatarCustomColor,
+            photoModel = photoFile,
+            memoryCacheKey = memoryCacheKey,
         )
         Spacer(modifier = Modifier.height(NexusTheme.spacing.sm))
         Text(

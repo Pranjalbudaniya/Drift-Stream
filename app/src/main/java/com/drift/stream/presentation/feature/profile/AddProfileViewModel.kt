@@ -41,6 +41,8 @@ class AddProfileViewModel
             val savedName: String? = savedStateHandle[KEY_NAME]
             val savedColor: Int? = savedStateHandle[KEY_COLOR]
             val savedEmoji: String? = savedStateHandle[KEY_EMOJI]
+            val savedCustomColor: Int? = savedStateHandle[KEY_CUSTOM_COLOR]
+            val savedPendingPhoto: String? = savedStateHandle[KEY_PENDING_PHOTO]
 
             if (savedName != null) {
                 isInitialized = true
@@ -50,6 +52,8 @@ class AddProfileViewModel
                             name = savedName,
                             colorIndex = savedColor ?: 0,
                             emoji = savedEmoji,
+                            customColor = savedCustomColor,
+                            pendingPhotoPath = savedPendingPhoto,
                         ),
                     )
             } else {
@@ -84,6 +88,8 @@ class AddProfileViewModel
                             name = request.name,
                             avatarColor = request.colorIndex,
                             avatarEmoji = request.emoji,
+                            avatarCustomColor = request.customColor,
+                            avatarPhotoStamp = null,
                         )
                     when (result) {
                         is CreateResult.Created -> {
@@ -115,11 +121,15 @@ class AddProfileViewModel
             savedStateHandle[KEY_NAME] = state.name
             savedStateHandle[KEY_COLOR] = state.colorIndex
             savedStateHandle[KEY_EMOJI] = state.emoji
+            savedStateHandle[KEY_CUSTOM_COLOR] = state.customColor
+            savedStateHandle[KEY_PENDING_PHOTO] = state.pendingPhotoPath
         }
 
         companion object {
             const val KEY_NAME = "add_profile_name"
             const val KEY_COLOR = "add_profile_color"
             const val KEY_EMOJI = "add_profile_emoji"
+            const val KEY_CUSTOM_COLOR = "add_profile_custom_color"
+            const val KEY_PENDING_PHOTO = "add_profile_pending_photo"
         }
     }

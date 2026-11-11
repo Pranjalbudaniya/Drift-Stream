@@ -42,6 +42,8 @@ class ProfileSetupViewModel
             val savedName: String? = savedStateHandle[KEY_NAME]
             val savedColor: Int? = savedStateHandle[KEY_COLOR]
             val savedEmoji: String? = savedStateHandle[KEY_EMOJI]
+            val savedCustomColor: Int? = savedStateHandle[KEY_CUSTOM_COLOR]
+            val savedPendingPhoto: String? = savedStateHandle[KEY_PENDING_PHOTO]
 
             if (savedName != null) {
                 isInitialized = true
@@ -51,6 +53,8 @@ class ProfileSetupViewModel
                             name = savedName,
                             colorIndex = savedColor ?: 0,
                             emoji = savedEmoji,
+                            customColor = savedCustomColor,
+                            pendingPhotoPath = savedPendingPhoto,
                         ),
                     )
             } else {
@@ -91,6 +95,8 @@ class ProfileSetupViewModel
                             name = request.name,
                             avatarColor = request.colorIndex,
                             avatarEmoji = request.emoji,
+                            avatarCustomColor = request.customColor,
+                            avatarPhotoStamp = null,
                         )
                     when (result) {
                         is UpdateResult.Updated -> {
@@ -116,6 +122,8 @@ class ProfileSetupViewModel
             savedStateHandle[KEY_NAME] = state.name
             savedStateHandle[KEY_COLOR] = state.colorIndex
             savedStateHandle[KEY_EMOJI] = state.emoji
+            savedStateHandle[KEY_CUSTOM_COLOR] = state.customColor
+            savedStateHandle[KEY_PENDING_PHOTO] = state.pendingPhotoPath
         }
 
         companion object {
@@ -123,5 +131,7 @@ class ProfileSetupViewModel
             const val KEY_NAME = "profile_name"
             const val KEY_COLOR = "profile_color"
             const val KEY_EMOJI = "profile_emoji"
+            const val KEY_CUSTOM_COLOR = "profile_custom_color"
+            const val KEY_PENDING_PHOTO = "profile_pending_photo"
         }
     }

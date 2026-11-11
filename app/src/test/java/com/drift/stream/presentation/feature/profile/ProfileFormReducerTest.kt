@@ -168,4 +168,103 @@ class ProfileFormReducerTest {
         assertEquals(2, state.colorIndex)
         assertNull(state.emoji)
     }
+
+    @Test
+    fun FA1_emojiPicked_setsEmoji_andClearsPhoto() {
+        val state = ProfileFormState("Asha", 2, emoji = null, pendingPhotoPath = "/cache/avatar.jpg")
+        val (newState, _) = reduceProfileForm(state, ProfileFormEvent.EmojiPicked("🦊"), emptyList())
+        assertEquals("🦊", newState.emoji)
+        assertNull(newState.pendingPhotoPath)
+    }
+
+    @Test
+    fun FA2_photoCropped_setsPendingPhoto_andClearsEmoji() {
+        val state = ProfileFormState("Asha", 2, emoji = "🦊", pendingPhotoPath = null)
+        val (newState, _) = reduceProfileForm(state, ProfileFormEvent.PhotoCropped("/cache/new.jpg"), emptyList())
+        assertEquals("/cache/new.jpg", newState.pendingPhotoPath)
+        assertNull(newState.emoji)
+    }
+
+    @Test
+    fun FA3_useInitial_clearsEmojiAndPhoto() {
+        val stateWithEmoji = ProfileFormState("Asha", 2, emoji = "🦊", pendingPhotoPath = null)
+        val (cleared1, _) = reduceProfileForm(stateWithEmoji, ProfileFormEvent.AvatarCleared, emptyList())
+        assertNull(cleared1.emoji)
+        assertNull(cleared1.pendingPhotoPath)
+
+        val stateWithPhoto = ProfileFormState("Asha", 2, emoji = null, pendingPhotoPath = "/cache/pic.jpg")
+        val (cleared2, _) = reduceProfileForm(stateWithPhoto, ProfileFormEvent.AvatarCleared, emptyList())
+        assertNull(cleared2.emoji)
+        assertNull(cleared2.pendingPhotoPath)
+    }
+
+    @Test
+    fun FA4_customColorPicked_setsOpaqueCustomColor() {
+        val state = ProfileFormState("Asha", colorIndex = 3, emoji = null)
+        val (newState, _) = reduceProfileForm(state, ProfileFormEvent.CustomColorPicked(0x00FF8800), emptyList())
+        assertEquals(0xFFFF8800.toInt(), newState.customColor)
+        assertEquals(3, newState.colorIndex)
+    }
+
+    @Test
+    fun FA5_paletteColorPicked_clearsCustomColor() {
+        val state = ProfileFormState("Asha", colorIndex = 2, emoji = null, customColor = 0xFFFF8800.toInt())
+        val (newState, _) = reduceProfileForm(state, ProfileFormEvent.ColorPicked(4), emptyList())
+        assertNull(newState.customColor)
+        assertEquals(4, newState.colorIndex)
+    }
+
+    @Test
+    fun FA6_invalidEmoji_isIgnored() {
+        val initial = ProfileFormState("Asha", colorIndex = 1, emoji = "🦊")
+
+        val (blankState, _) = reduceProfileForm(initial, ProfileFormEvent.EmojiPicked(""), emptyList())
+        assertEquals(initial, blankState)
+
+        val thirtyThree = "a".repeat(33)
+        val (longState, _) = reduceProfileForm(initial, ProfileFormEvent.EmojiPicked(thirtyThree), emptyList())
+        assertEquals(initial, longState)
+    }
+
+    @Test
+    fun FA7_submit_includesAvatarChoice() {
+        val customColor = 0xFF556677.toInt()
+        val customWithEmoji =
+            ProfileFormState(
+                name = "Asha",
+                colorIndex = 1,
+                emoji = "🦊",
+                customColor = customColor,
+            )
+        val (_, request1) = reduceProfileForm(customWithEmoji, ProfileFormEvent.Submit, emptyList())
+        assertEquals(
+            SubmitRequest(
+                name = "Asha",
+                colorIndex = 1,
+                emoji = "🦊",
+                customColor = customColor,
+                pendingPhotoPath = null,
+            ),
+            request1,
+        )
+
+        val stateWithPhoto =
+            ProfileFormState(
+                name = "Berto",
+                colorIndex = 5,
+                emoji = null,
+                pendingPhotoPath = "/cache/avatar.jpg",
+            )
+        val (_, request2) = reduceProfileForm(stateWithPhoto, ProfileFormEvent.Submit, emptyList())
+        assertEquals(
+            SubmitRequest(
+                name = "Berto",
+                colorIndex = 5,
+                emoji = null,
+                customColor = null,
+                pendingPhotoPath = "/cache/avatar.jpg",
+            ),
+            request2,
+        )
+    }
 }

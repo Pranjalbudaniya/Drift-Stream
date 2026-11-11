@@ -1,6 +1,9 @@
 package com.drift.stream.presentation.feature.profile
 
 import android.content.res.Configuration
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -26,6 +29,17 @@ fun ProfileSetupScreen(
     viewModel: ProfileSetupViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val croppingBitmap by viewModel.croppingBitmap.collectAsStateWithLifecycle()
+
+    val photoPickerLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.PickVisualMedia(),
+            onResult = { uri ->
+                if (uri != null) {
+                    viewModel.onPhotoPicked(uri)
+                }
+            },
+        )
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
@@ -35,11 +49,26 @@ fun ProfileSetupScreen(
         }
     }
 
-    ProfileSetupContent(
-        state = state,
-        onEvent = viewModel::onEvent,
-        modifier = modifier,
-    )
+    val activeBitmap = croppingBitmap
+    if (activeBitmap != null) {
+        PhotoCropScreen(
+            bitmap = activeBitmap,
+            onDone = viewModel::onCropDone,
+            onCancel = viewModel::onCropCancel,
+            modifier = modifier,
+        )
+    } else {
+        ProfileSetupContent(
+            state = state,
+            onEvent = viewModel::onEvent,
+            onPickPhoto = {
+                photoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                )
+            },
+            modifier = modifier,
+        )
+    }
 }
 
 @Composable
@@ -47,6 +76,7 @@ fun ProfileSetupContent(
     state: ProfileFormState,
     onEvent: (ProfileFormEvent) -> Unit,
     modifier: Modifier = Modifier,
+    onPickPhoto: (() -> Unit)? = null,
 ) {
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -63,6 +93,7 @@ fun ProfileSetupContent(
                 title = stringResource(R.string.profile_setup_title),
                 subtitle = stringResource(R.string.profile_setup_subtitle),
                 actionButtonText = stringResource(R.string.profile_form_continue),
+                onPickPhoto = onPickPhoto,
                 modifier =
                     Modifier
                         .fillMaxSize()
@@ -84,12 +115,12 @@ internal fun ProfileSetupScreenLightPreview() {
     }
 }
 
-@Preview(name = "Profile Setup - Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "Profile Setup - Dark", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 internal fun ProfileSetupScreenDarkPreview() {
     NexusTheme {
         ProfileSetupContent(
-            state = ProfileFormState(name = "Me", colorIndex = 4, emoji = "🦊"),
+            state = ProfileFormState(name = "Me", colorIndex = 0, emoji = null),
             onEvent = {},
         )
     }

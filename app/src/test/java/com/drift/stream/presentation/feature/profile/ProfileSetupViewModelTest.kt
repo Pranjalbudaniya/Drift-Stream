@@ -1,6 +1,7 @@
 package com.drift.stream.presentation.feature.profile
 
 import androidx.lifecycle.SavedStateHandle
+import com.drift.stream.data.profile.AvatarPhotoStore
 import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.repository.ProfileRepository
 import com.drift.stream.domain.repository.UpdateResult
@@ -24,6 +25,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.File
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneId
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ProfileSetupViewModelTest {
@@ -124,5 +129,63 @@ class ProfileSetupViewModelTest {
             assertTrue(state.saveFailed)
             assertEquals("Asha", state.name)
             assertEquals(7, state.colorIndex)
+        }
+
+    @Test
+    fun SV3_submitWithPhoto_writesFileThenSetsStamp() =
+        testScope.runTest {
+            val owner = sampleOwner(1L, "Me")
+            val profileRepo = mockk<ProfileRepository>()
+            val photoStore = mockk<AvatarPhotoStore>(relaxed = true)
+            val profilesFlow = MutableStateFlow(listOf(owner))
+            every { profileRepo.profiles } returns profilesFlow
+
+            val testTime = 1_700_000_000_000L
+            val testClock = Clock.fixed(Instant.ofEpochMilli(testTime), ZoneId.of("UTC"))
+
+            val tempFile =
+                File.createTempFile("pending_avatar", ".jpg").apply {
+                    writeBytes(byteArrayOf(1, 2, 3, 4))
+                    deleteOnExit()
+                }
+
+            coEvery {
+                profileRepo.completeSetup(
+                    id = 1L,
+                    name = "Me",
+                    avatarColor = 2,
+                    avatarEmoji = null,
+                    avatarCustomColor = null,
+                    avatarPhotoStamp = testTime,
+                )
+            } returns UpdateResult.Updated(owner.copy(avatarPhotoStamp = testTime))
+
+            val savedStateHandle = SavedStateHandle()
+            val viewModel =
+                ProfileSetupViewModel(
+                    profileRepository = profileRepo,
+                    savedStateHandle = savedStateHandle,
+                    avatarPhotoStore = photoStore,
+                    clock = testClock,
+                )
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(ProfileFormEvent.PhotoCropped(tempFile.absolutePath))
+            viewModel.onEvent(ProfileFormEvent.Submit)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) {
+                photoStore.write(1L, match { it.contentEquals(byteArrayOf(1, 2, 3, 4)) })
+            }
+            coVerify(exactly = 1) {
+                profileRepo.completeSetup(
+                    id = 1L,
+                    name = "Me",
+                    avatarColor = 2,
+                    avatarEmoji = null,
+                    avatarCustomColor = null,
+                    avatarPhotoStamp = testTime,
+                )
+            }
         }
 }

@@ -552,7 +552,7 @@ internal fun ProfileFormLightPreview() {
         ProfileForm(
             state = ProfileFormState(name = "Alex", colorIndex = 2, emoji = "🦊"),
             onEvent = {},
-            title = "Set up your profile",
+            title = stringResource(R.string.profile_setup_title),
         )
     }
 }
@@ -564,7 +564,7 @@ internal fun ProfileFormDarkPreview() {
         ProfileForm(
             state = ProfileFormState(name = "Alex", colorIndex = 2, emoji = null),
             onEvent = {},
-            title = "Add profile",
+            title = stringResource(R.string.add_profile_title),
         )
     }
 }

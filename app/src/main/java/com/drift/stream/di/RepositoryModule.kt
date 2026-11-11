@@ -6,6 +6,8 @@ import com.drift.stream.data.local.prefs.PlayerPrefsRepositoryImpl
 import com.drift.stream.data.local.prefs.SettingsRepositoryImpl
 import com.drift.stream.data.local.prefs.TorrentPrefsRepositoryImpl
 import com.drift.stream.data.profile.ActiveProfileHolder
+import com.drift.stream.data.profile.AvatarPhotoPipeline
+import com.drift.stream.data.profile.AvatarPhotoPipelineImpl
 import com.drift.stream.data.profile.AvatarPhotoStore
 import com.drift.stream.data.profile.AvatarPhotoStoreImpl
 import com.drift.stream.data.profile.ProfileRepositoryImpl
@@ -97,6 +99,10 @@ interface RepositoryModule {
     @Binds
     @Singleton
     fun bindAvatarPhotoStore(impl: AvatarPhotoStoreImpl): AvatarPhotoStore
+
+    @Binds
+    @Singleton
+    fun bindAvatarPhotoPipeline(impl: AvatarPhotoPipelineImpl): AvatarPhotoPipeline
 
     @Binds
     @Singleton

@@ -34,6 +34,9 @@ import com.drift.stream.presentation.theme.NexusTheme
 
 private val PREVIEW_SIZE = 72.dp
 private const val HUE_MAX = 360f
+private const val PREVIEW_INITIAL_HUE = 120f
+private const val PREVIEW_INITIAL_SAT = 1f
+private const val PREVIEW_INITIAL_VAL = 1f
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -166,7 +169,7 @@ private fun ColorSliderRow(
 internal fun CustomColorSheetPreview() {
     NexusTheme {
         CustomColorSheet(
-            initialColor = 0xFF2E7D32.toInt(),
+            initialColor = hsvToArgb(PREVIEW_INITIAL_HUE, PREVIEW_INITIAL_SAT, PREVIEW_INITIAL_VAL),
             name = "Preview",
             emoji = "🦊",
             onApply = {},

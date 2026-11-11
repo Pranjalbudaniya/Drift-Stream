@@ -52,6 +52,13 @@ private class CinemetaFakeAppStateRepo(
     override suspend fun setLastActiveProfileId(id: Long) {
         lastActiveProfileState.value = id
     }
+
+    private val alwaysShowPickerState = MutableStateFlow(false)
+    override val alwaysShowPicker: Flow<Boolean> = alwaysShowPickerState
+
+    override suspend fun setAlwaysShowPicker(alwaysShow: Boolean) {
+        alwaysShowPickerState.value = alwaysShow
+    }
 }
 
 private class CinemetaFakeContentPrefsRepo(

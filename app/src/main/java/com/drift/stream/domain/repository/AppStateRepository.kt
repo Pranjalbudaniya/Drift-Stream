@@ -14,4 +14,8 @@ interface AppStateRepository {
     val lastActiveProfileId: Flow<Long?>
 
     suspend fun setLastActiveProfileId(id: Long)
+
+    val alwaysShowPicker: Flow<Boolean>
+
+    suspend fun setAlwaysShowPicker(alwaysShow: Boolean)
 }

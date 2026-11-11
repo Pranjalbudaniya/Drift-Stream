@@ -13,4 +13,7 @@ data class Profile(
     val createdAt: Long,
     val lastUsedAt: Long,
     val sortOrder: Int,
-)
+) {
+    val isLocked: Boolean
+        get() = pinHash != null
+}

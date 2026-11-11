@@ -137,6 +137,34 @@ class ProfileRepositoryImpl
                 }
             }
 
+        override suspend fun completeSetup(
+            id: Long,
+            name: String,
+            avatarColor: Int,
+            avatarEmoji: String?,
+        ): UpdateResult =
+            withContext(ioDispatcher) {
+                val existing = profileDao.getById(id) ?: return@withContext UpdateResult.NotFound
+                val otherNames = profileDao.getAll().filter { it.id != id }.map { it.name }
+                when (val validation = ProfileNameRules.validate(name, otherNames)) {
+                    is NameResult.Valid -> {
+                        val updated =
+                            existing.copy(
+                                name = validation.trimmedName,
+                                avatarColor = avatarColor,
+                                avatarEmoji = avatarEmoji,
+                                needsSetup = false,
+                            )
+                        profileDao.update(updated)
+                        UpdateResult.Updated(updated.toDomain())
+                    }
+
+                    else -> {
+                        UpdateResult.InvalidName(validation)
+                    }
+                }
+            }
+
         override suspend fun delete(id: Long): DeleteResult =
             withContext(ioDispatcher) {
                 val profile = profileDao.getById(id) ?: return@withContext DeleteResult.NotFound

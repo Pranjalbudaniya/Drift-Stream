@@ -53,5 +53,12 @@ interface ProfileRepository {
 
     suspend fun update(profile: Profile): UpdateResult
 
+    suspend fun completeSetup(
+        id: Long,
+        name: String,
+        avatarColor: Int,
+        avatarEmoji: String?,
+    ): UpdateResult
+
     suspend fun delete(id: Long): DeleteResult
 }

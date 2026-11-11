@@ -939,5 +939,39 @@
     <string name="downloads_failed_with_code">%1$s · %2$s</string>
     <string name="downloads_menu_find_source">Find a different source</string>
     <string name="download_source_replaced">Source replaced. Download starting.</string>
+
+    <!-- P20a: Profile setup, Who's watching picker, Add profile -->
+    <string name="profile_setup_title">Set up your profile</string>
+    <string name="profile_setup_subtitle">Choose a name and a look for your profile.</string>
+    <string name="profile_form_name_label">Name</string>
+    <string name="profile_form_color_label">Colour</string>
+    <string name="profile_form_emoji_label">Emoji (optional)</string>
+    <string name="profile_form_use_initial">Use the initial</string>
+    <string name="profile_form_continue">Continue</string>
+    <string name="who_is_watching_title">Who\'s watching?</string>
+    <string name="who_is_watching_add_profile">Add profile</string>
+    <string name="who_is_watching_choose_failed">Couldn\'t open this profile. Try again.</string>
+    <string name="add_profile_title">Add profile</string>
+    <string name="add_profile_button">Add</string>
+    <string name="add_profile_back">Back</string>
+    <string name="profile_error_name_empty">Enter a name.</string>
+    <string name="profile_error_name_too_long">Use 20 characters or fewer.</string>
+    <string name="profile_error_name_duplicate">Another profile already has this name.</string>
+    <string name="profile_error_name_invalid">This name has characters that aren\'t allowed.</string>
+    <string name="profile_error_save_failed">Couldn\'t save. Try again.</string>
+    <string name="avatar_color_0">Red</string>
+    <string name="avatar_color_1">Orange</string>
+    <string name="avatar_color_2">Amber</string>
+    <string name="avatar_color_3">Lime</string>
+    <string name="avatar_color_4">Green</string>
+    <string name="avatar_color_5">Teal</string>
+    <string name="avatar_color_6">Brown</string>
+    <string name="avatar_color_7">Blue</string>
+    <string name="avatar_color_8">Indigo</string>
+    <string name="avatar_color_9">Purple</string>
+    <string name="avatar_color_10">Pink</string>
+    <string name="avatar_color_11">Slate</string>
+    <string name="avatar_color_swatch_selected">%1$s, selected</string>
+    <string name="avatar_preview_content_description">Avatar preview</string>
 </resources>
 

@@ -74,6 +74,13 @@ class ProfileTesterViewModelTest {
 
         override suspend fun update(profile: Profile): UpdateResult = error("unused")
 
+        override suspend fun completeSetup(
+            id: Long,
+            name: String,
+            avatarColor: Int,
+            avatarEmoji: String?,
+        ): UpdateResult = error("unused")
+
         override suspend fun delete(id: Long): DeleteResult {
             val target = profilesFlow.value.firstOrNull { it.id == id }
             return when {

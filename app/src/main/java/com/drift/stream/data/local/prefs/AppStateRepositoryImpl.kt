@@ -79,9 +79,28 @@ class AppStateRepositoryImpl
             }
         }
 
+        override val alwaysShowPicker: Flow<Boolean> =
+            dataStore.data
+                .catch { exception ->
+                    if (exception is IOException || exception is CorruptionException) {
+                        emit(emptyPreferences())
+                    } else {
+                        throw exception
+                    }
+                }.map { prefs ->
+                    prefs[ALWAYS_SHOW_PICKER_KEY] ?: false
+                }.distinctUntilChanged()
+
+        override suspend fun setAlwaysShowPicker(alwaysShow: Boolean) {
+            dataStore.edit { prefs ->
+                prefs[ALWAYS_SHOW_PICKER_KEY] = alwaysShow
+            }
+        }
+
         companion object {
             val DEFAULT_ADDONS_SEEDED_KEY = booleanPreferencesKey("default_addons_seeded")
             val DEFAULT_ADDONS_SEEDED_PROFILES_KEY = stringSetPreferencesKey("default_addons_seeded_profiles")
             val LAST_ACTIVE_PROFILE_ID_KEY = longPreferencesKey("last_active_profile_id")
+            val ALWAYS_SHOW_PICKER_KEY = booleanPreferencesKey("always_show_picker")
         }
     }

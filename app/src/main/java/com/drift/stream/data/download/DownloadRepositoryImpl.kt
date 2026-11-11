@@ -2,6 +2,8 @@ package com.drift.stream.data.download
 
 import com.drift.stream.data.local.db.dao.DownloadDao
 import com.drift.stream.data.local.db.entity.DownloadEntity
+import com.drift.stream.data.profile.requireId
+import com.drift.stream.data.profile.scopedFlow
 import com.drift.stream.domain.model.DownloadFailure
 import com.drift.stream.domain.model.DownloadItem
 import com.drift.stream.domain.model.DownloadKind
@@ -10,6 +12,7 @@ import com.drift.stream.domain.model.DownloadState
 import com.drift.stream.domain.model.GalleryFailure
 import com.drift.stream.domain.model.GalleryState
 import com.drift.stream.domain.model.PauseReason
+import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.DownloadRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -21,25 +24,43 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
+@Suppress("TooManyFunctions")
 @Singleton
 class DownloadRepositoryImpl
     @Inject
     constructor(
         private val dao: DownloadDao,
+        private val activeProfile: ActiveProfileProvider,
     ) : DownloadRepository {
         private val galleryFailures = ConcurrentHashMap<String, GalleryFailure>()
 
         override fun observeAll(): Flow<List<DownloadItem>> =
-            dao.observeAll().map { list -> list.map { DownloadMapper.toDomain(it, galleryFailures[it.id]) } }
+            activeProfile.scopedFlow { profileId ->
+                dao.observeAll(profileId).map { list ->
+                    list.map { DownloadMapper.toDomain(it, galleryFailures[it.id]) }
+                }
+            }
 
         override fun observeForMeta(metaId: String): Flow<List<DownloadItem>> =
-            dao.observeForMeta(metaId).map { list -> list.map { DownloadMapper.toDomain(it, galleryFailures[it.id]) } }
+            activeProfile.scopedFlow { profileId ->
+                dao
+                    .observeForMeta(profileId, metaId)
+                    .map { list -> list.map { DownloadMapper.toDomain(it, galleryFailures[it.id]) } }
+            }
+
+        override fun observeEverything(): Flow<List<DownloadItem>> =
+            dao.observeEverything().map { list -> list.map { DownloadMapper.toDomain(it, galleryFailures[it.id]) } }
 
         override suspend fun get(id: String): DownloadItem? =
             dao.get(id)?.let { DownloadMapper.toDomain(it, galleryFailures[it.id]) }
 
         override suspend fun getAll(): List<DownloadItem> =
             dao.getAll().map { DownloadMapper.toDomain(it, galleryFailures[it.id]) }
+
+        override suspend fun getAllForActiveProfile(): List<DownloadItem> =
+            dao
+                .getAllForProfile(activeProfile.requireId())
+                .map { DownloadMapper.toDomain(it, galleryFailures[it.id]) }
 
         override suspend fun insert(item: DownloadItem) {
             if (item.galleryFailure != null) {
@@ -239,6 +260,7 @@ private object DownloadMapper {
             createdAt = entity.createdAt,
             updatedAt = entity.updatedAt,
             completedAt = entity.completedAt,
+            profileId = entity.profileId,
         )
     }
 
@@ -280,6 +302,7 @@ private object DownloadMapper {
             completedAt = item.completedAt,
             galleryUri = item.galleryUri,
             galleryState = item.galleryState.name,
+            profileId = item.profileId,
         )
     }
 }

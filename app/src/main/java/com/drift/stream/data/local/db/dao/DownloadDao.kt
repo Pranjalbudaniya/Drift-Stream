@@ -6,13 +6,23 @@ import androidx.room.Upsert
 import com.drift.stream.data.local.db.entity.DownloadEntity
 import kotlinx.coroutines.flow.Flow
 
+@Suppress("TooManyFunctions")
 @Dao
 interface DownloadDao {
-    @Query("SELECT * FROM downloads ORDER BY createdAt DESC")
-    fun observeAll(): Flow<List<DownloadEntity>>
+    @Query("SELECT * FROM downloads WHERE profileId = :profileId ORDER BY createdAt DESC")
+    fun observeAll(profileId: Long): Flow<List<DownloadEntity>>
 
-    @Query("SELECT * FROM downloads WHERE metaId = :metaId ORDER BY createdAt DESC")
-    fun observeForMeta(metaId: String): Flow<List<DownloadEntity>>
+    @Query("SELECT * FROM downloads WHERE profileId = :profileId AND metaId = :metaId ORDER BY createdAt DESC")
+    fun observeForMeta(
+        profileId: Long,
+        metaId: String,
+    ): Flow<List<DownloadEntity>>
+
+    @Query("SELECT * FROM downloads ORDER BY createdAt DESC")
+    fun observeEverything(): Flow<List<DownloadEntity>>
+
+    @Query("SELECT * FROM downloads WHERE profileId = :profileId ORDER BY createdAt DESC")
+    suspend fun getAllForProfile(profileId: Long): List<DownloadEntity>
 
     @Query("SELECT * FROM downloads WHERE id = :id")
     suspend fun get(id: String): DownloadEntity?

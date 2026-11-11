@@ -444,9 +444,7 @@ class AddonManagerViewModel
         ) {
             viewModelScope.launch {
                 when (addonRepository.setShared(url, shared)) {
-                    is Outcome.Success -> {
-                        Unit
-                    }
+                    is Outcome.Success -> {}
 
                     is Outcome.Failure -> {
                         _effects.emit(AddonManagerEffect.ShowMessage(R.string.addon_share_failed))

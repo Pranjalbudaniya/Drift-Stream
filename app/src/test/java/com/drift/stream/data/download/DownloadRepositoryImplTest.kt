@@ -7,6 +7,7 @@ import com.drift.stream.domain.model.DownloadItem
 import com.drift.stream.domain.model.DownloadKind
 import com.drift.stream.domain.model.DownloadSource
 import com.drift.stream.domain.model.DownloadState
+import com.drift.stream.testutil.FakeActiveProfileProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -19,6 +20,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DownloadRepositoryImplTest {
+    private val activeProfile = FakeActiveProfileProvider(1L)
+
     private class FakeDownloadDao : DownloadDao {
         val table = LinkedHashMap<String, DownloadEntity>()
         private val state = MutableStateFlow<List<DownloadEntity>>(emptyList())
@@ -27,10 +30,19 @@ class DownloadRepositoryImplTest {
             state.value = table.values.sortedByDescending { it.createdAt }
         }
 
-        override fun observeAll(): Flow<List<DownloadEntity>> = state
+        override fun observeAll(profileId: Long): Flow<List<DownloadEntity>> =
+            state.map { list -> list.filter { it.profileId == profileId } }
 
-        override fun observeForMeta(metaId: String): Flow<List<DownloadEntity>> =
-            state.map { list -> list.filter { it.metaId == metaId } }
+        override fun observeForMeta(
+            profileId: Long,
+            metaId: String,
+        ): Flow<List<DownloadEntity>> =
+            state.map { list -> list.filter { it.profileId == profileId && it.metaId == metaId } }
+
+        override fun observeEverything(): Flow<List<DownloadEntity>> = state
+
+        override suspend fun getAllForProfile(profileId: Long): List<DownloadEntity> =
+            table.values.filter { it.profileId == profileId }.sortedByDescending { it.createdAt }
 
         override suspend fun get(id: String): DownloadEntity? = table[id]
 
@@ -162,7 +174,7 @@ class DownloadRepositoryImplTest {
     fun DB1_insertAndObserve_roundTripsEveryField() =
         runTest {
             val dao = FakeDownloadDao()
-            val repo = DownloadRepositoryImpl(dao)
+            val repo = DownloadRepositoryImpl(dao, activeProfile)
             val item = createItem()
 
             repo.insert(item)
@@ -176,7 +188,7 @@ class DownloadRepositoryImplTest {
     fun DB2_updateProgress_persistsBytesAndState() =
         runTest {
             val dao = FakeDownloadDao()
-            val repo = DownloadRepositoryImpl(dao)
+            val repo = DownloadRepositoryImpl(dao, activeProfile)
             val item = createItem().copy(state = DownloadState.QUEUED, downloadedBytes = 0L)
 
             repo.insert(item)
@@ -199,7 +211,7 @@ class DownloadRepositoryImplTest {
     fun DB3_observeForMeta_filtersByMetaId() =
         runTest {
             val dao = FakeDownloadDao()
-            val repo = DownloadRepositoryImpl(dao)
+            val repo = DownloadRepositoryImpl(dao, activeProfile)
             val item1 = createItem(id = "1", metaId = "tt1")
             val item2 = createItem(id = "2", metaId = "tt2")
 
@@ -215,7 +227,7 @@ class DownloadRepositoryImplTest {
     fun DB4_delete_removesTheRow() =
         runTest {
             val dao = FakeDownloadDao()
-            val repo = DownloadRepositoryImpl(dao)
+            val repo = DownloadRepositoryImpl(dao, activeProfile)
             val item = createItem()
 
             repo.insert(item)
@@ -229,7 +241,7 @@ class DownloadRepositoryImplTest {
     fun DB5_unknownStateOrFailureName_readsAsFailedUnknown() =
         runTest {
             val dao = FakeDownloadDao()
-            val repo = DownloadRepositoryImpl(dao)
+            val repo = DownloadRepositoryImpl(dao, activeProfile)
 
             val rawEntity =
                 DownloadEntity(

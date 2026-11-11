@@ -121,6 +121,7 @@ data class DownloadItem(
     val galleryState: GalleryState = GalleryState.NONE,
     val galleryUri: String? = null,
     val galleryFailure: GalleryFailure? = null,
+    val profileId: Long = 1L,
 ) {
     override fun toString(): String =
         "DownloadItem(id=$id, kind=$kind, state=$state, downloadedBytes=$downloadedBytes, totalBytes=$totalBytes)"

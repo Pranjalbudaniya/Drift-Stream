@@ -9,14 +9,19 @@ import com.drift.stream.domain.model.GalleryState
 import com.drift.stream.domain.model.PauseReason
 import kotlinx.coroutines.flow.Flow
 
+@Suppress("TooManyFunctions")
 interface DownloadRepository {
     fun observeAll(): Flow<List<DownloadItem>>
 
     fun observeForMeta(metaId: String): Flow<List<DownloadItem>>
 
+    fun observeEverything(): Flow<List<DownloadItem>>
+
     suspend fun get(id: String): DownloadItem?
 
     suspend fun getAll(): List<DownloadItem>
+
+    suspend fun getAllForActiveProfile(): List<DownloadItem>
 
     suspend fun insert(item: DownloadItem)
 

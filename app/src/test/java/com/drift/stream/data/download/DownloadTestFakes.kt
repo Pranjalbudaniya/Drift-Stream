@@ -1,5 +1,7 @@
 package com.drift.stream.data.download
 
+import com.drift.stream.data.profile.requireId
+import com.drift.stream.data.profile.scopedFlow
 import com.drift.stream.data.torrent.NetworkStatus
 import com.drift.stream.domain.model.DownloadDisplay
 import com.drift.stream.domain.model.DownloadEffect
@@ -14,6 +16,7 @@ import com.drift.stream.domain.model.EnqueueResult
 import com.drift.stream.domain.model.GalleryFailure
 import com.drift.stream.domain.model.GalleryState
 import com.drift.stream.domain.model.PauseReason
+import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.ContentPrefsRepository
 import com.drift.stream.domain.repository.DownloadClock
 import com.drift.stream.domain.repository.DownloadEngines
@@ -41,6 +44,7 @@ import com.drift.stream.domain.repository.TorrentTask
 import com.drift.stream.domain.repository.TorrentUpdate
 import com.drift.stream.domain.usecase.AggregateNotificationModel
 import com.drift.stream.domain.usecase.DownloadEventNotification
+import com.drift.stream.testutil.FakeActiveProfileProvider
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -50,19 +54,38 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import java.io.File
 
-class FakeDownloadRepository : DownloadRepository {
+class FakeDownloadRepository(
+    private val activeProfile: ActiveProfileProvider = FakeActiveProfileProvider(1L),
+) : DownloadRepository {
     val itemsMap = MutableStateFlow<Map<String, DownloadItem>>(emptyMap())
     var updateProgressCalls = 0
 
     override fun observeAll(): Flow<List<DownloadItem>> =
-        itemsMap.map { it.values.toList().sortedByDescending { item -> item.createdAt } }
+        activeProfile.scopedFlow { pId ->
+            itemsMap.map {
+                it.values
+                    .filter { item ->
+                        item.profileId == pId
+                    }.sortedByDescending { item -> item.createdAt }
+            }
+        }
 
     override fun observeForMeta(metaId: String): Flow<List<DownloadItem>> =
-        itemsMap.map { it.values.filter { item -> item.metaId == metaId } }
+        activeProfile.scopedFlow { pId ->
+            itemsMap.map { it.values.filter { item -> item.profileId == pId && item.metaId == metaId } }
+        }
+
+    override fun observeEverything(): Flow<List<DownloadItem>> =
+        itemsMap.map { it.values.toList().sortedByDescending { item -> item.createdAt } }
 
     override suspend fun get(id: String): DownloadItem? = itemsMap.value[id]
 
     override suspend fun getAll(): List<DownloadItem> = itemsMap.value.values.toList()
+
+    override suspend fun getAllForActiveProfile(): List<DownloadItem> {
+        val pId = activeProfile.requireId()
+        return itemsMap.value.values.filter { it.profileId == pId }
+    }
 
     override suspend fun insert(item: DownloadItem) {
         itemsMap.value += (item.id to item)
@@ -406,7 +429,8 @@ class FakeGalleryExporter : GalleryExporter {
 }
 
 data class DownloadTestDependencies(
-    val repo: FakeDownloadRepository = FakeDownloadRepository(),
+    val activeProfile: FakeActiveProfileProvider = FakeActiveProfileProvider(1L),
+    val repo: FakeDownloadRepository = FakeDownloadRepository(activeProfile),
     val prefs: FakeDownloadPrefsRepository = FakeDownloadPrefsRepository(),
     val downloader: FakeHttpDownloader = FakeHttpDownloader(),
     val torrentDownloader: FakeTorrentDownloader = FakeTorrentDownloader(),
@@ -442,6 +466,7 @@ fun createTestDownloadManager(
         platform = platform,
         galleryExporter = deps.galleryExporter,
         scope = CoroutineScope(scope.coroutineContext + dispatcher),
+        activeProfile = deps.activeProfile,
     )
 }
 
@@ -519,6 +544,9 @@ fun createTestTorrentDownloadItem(
 class FakeDownloadManager : DownloadManager {
     val itemsFlow = MutableStateFlow<List<DownloadItem>>(emptyList())
     override val items: Flow<List<DownloadItem>> = itemsFlow
+
+    val allItemsFlow = MutableStateFlow<List<DownloadItem>>(emptyList())
+    override val allItems: Flow<List<DownloadItem>> = allItemsFlow
 
     val liveFlow = MutableStateFlow<Map<String, DownloadLive>>(emptyMap())
     override val live: StateFlow<Map<String, DownloadLive>> = liveFlow
@@ -619,4 +647,10 @@ class FakeDownloadManager : DownloadManager {
     }
 
     override fun getTorrentFileChoices(id: String): List<TorrentFileChoice> = fileChoicesMap[id].orEmpty()
+
+    val deleteAllForProfileCalls = mutableListOf<Long>()
+
+    override suspend fun deleteAllForProfile(profileId: Long) {
+        deleteAllForProfileCalls.add(profileId)
+    }
 }

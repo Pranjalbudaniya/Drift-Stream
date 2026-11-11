@@ -13,6 +13,7 @@ import java.io.File
 @Suppress("TooManyFunctions")
 interface DownloadManager {
     val items: Flow<List<DownloadItem>>
+    val allItems: Flow<List<DownloadItem>>
     val live: StateFlow<Map<String, DownloadLive>>
     val effects: Flow<DownloadEffect>
 
@@ -57,4 +58,6 @@ interface DownloadManager {
     )
 
     fun getTorrentFileChoices(id: String): List<TorrentFileChoice> = emptyList()
+
+    suspend fun deleteAllForProfile(profileId: Long)
 }

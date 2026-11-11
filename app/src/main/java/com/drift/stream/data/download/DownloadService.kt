@@ -85,7 +85,7 @@ class DownloadService : Service() {
 
     private fun observeDownloads() {
         serviceScope.launch {
-            combine(downloadManager.items, downloadManager.live) { items, live ->
+            combine(downloadManager.allItems, downloadManager.live) { items, live ->
                 Pair(items, live)
             }.collect { (items, live) ->
                 val hasActive =

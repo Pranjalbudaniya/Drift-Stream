@@ -1,5 +1,6 @@
 package com.drift.stream.data.download
 
+import com.drift.stream.data.profile.requireId
 import com.drift.stream.data.torrent.NetworkStatus
 import com.drift.stream.di.IoDispatcher
 import com.drift.stream.domain.model.DownloadDisplay
@@ -16,6 +17,7 @@ import com.drift.stream.domain.model.GalleryFailure
 import com.drift.stream.domain.model.GalleryState
 import com.drift.stream.domain.model.NetworkGate
 import com.drift.stream.domain.model.PauseReason
+import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.DownloadClock
 import com.drift.stream.domain.repository.DownloadManager
 import com.drift.stream.domain.repository.DownloadPlatformComponents
@@ -80,6 +82,7 @@ class DefaultDownloadManager(
     internal val platform: DownloadPlatformComponents,
     internal val galleryExporter: GalleryExporter,
     scope: CoroutineScope,
+    internal val activeProfile: ActiveProfileProvider,
 ) : DownloadManager {
     internal val torrentDownloader: TorrentDownloader get() = platform.torrentDownloader
 
@@ -99,6 +102,7 @@ class DefaultDownloadManager(
         platform: DownloadPlatformComponents,
         galleryExporter: GalleryExporter,
         @IoDispatcher ioDispatcher: CoroutineDispatcher,
+        activeProfile: ActiveProfileProvider,
     ) : this(
         repository = repository,
         prefsRepository = prefsRepository,
@@ -107,6 +111,7 @@ class DefaultDownloadManager(
         platform = platform,
         galleryExporter = galleryExporter,
         scope = CoroutineScope(ioDispatcher + kotlinx.coroutines.SupervisorJob()),
+        activeProfile = activeProfile,
     )
 
     private val _live = MutableStateFlow<Map<String, DownloadLive>>(emptyMap())
@@ -134,6 +139,7 @@ class DefaultDownloadManager(
     private val galleryMutex = Mutex()
 
     override val items: Flow<List<DownloadItem>> = repository.observeAll()
+    override val allItems: Flow<List<DownloadItem>> = repository.observeEverything()
     override val live: StateFlow<Map<String, DownloadLive>> = _live.asStateFlow()
     override val effects: Flow<DownloadEffect> = _effects.asSharedFlow()
 
@@ -153,19 +159,23 @@ class DefaultDownloadManager(
         val validationFailure = validateRequest(request)
         if (validationFailure != null) return EnqueueResult.Rejected(validationFailure)
 
-        val allItems = repository.getAll()
+        val profileId = activeProfile.requireId()
+        val allItems = repository.getAllForActiveProfile()
         val duplicate = findDuplicate(allItems, request.display.metaId, request.display.videoId)
         return if (duplicate != null) {
             EnqueueResult.Duplicate(duplicate.id, duplicate.state)
         } else {
-            insertAndScheduleNewItem(request)
+            insertAndScheduleNewItem(request, profileId)
         }
     }
 
-    private suspend fun insertAndScheduleNewItem(request: DownloadRequest): EnqueueResult {
+    private suspend fun insertAndScheduleNewItem(
+        request: DownloadRequest,
+        profileId: Long,
+    ): EnqueueResult {
         val id = UUID.randomUUID().toString()
         val now = clock.now()
-        val item = createEnqueuedItem(id, request, now)
+        val item = createEnqueuedItem(id, request, now, profileId)
         repository.insert(item)
 
         triggerScheduler()
@@ -209,7 +219,7 @@ class DefaultDownloadManager(
     override fun pauseAll() {
         scope.launch(ioDispatcher) {
             lastAttemptStartTimes.clear()
-            val all = repository.getAll()
+            val all = repository.getAllForActiveProfile()
             val now = clock.now()
             for (item in all) {
                 val pausable =
@@ -233,7 +243,7 @@ class DefaultDownloadManager(
 
     override fun resumeAll() {
         scope.launch(ioDispatcher) {
-            val all = repository.getAll()
+            val all = repository.getAllForActiveProfile()
             val now = clock.now()
             for (item in all) {
                 val resumable =
@@ -253,7 +263,7 @@ class DefaultDownloadManager(
             if (id != null) {
                 repository.setAllowMetered(id, true, now)
             } else {
-                repository.getAll().filter { it.state == DownloadState.WAITING_FOR_WIFI }.forEach {
+                repository.getAllForActiveProfile().filter { it.state == DownloadState.WAITING_FOR_WIFI }.forEach {
                     repository.setAllowMetered(it.id, true, now)
                 }
             }
@@ -294,11 +304,29 @@ class DefaultDownloadManager(
     }
 
     override suspend fun deleteCompleted() {
-        val completed = repository.getAll().filter { it.state == DownloadState.COMPLETED }
+        val completed = repository.getAllForActiveProfile().filter { it.state == DownloadState.COMPLETED }
         for (item in completed) {
             if (item.galleryUri != null) {
                 galleryExporter.delete(item.galleryUri)
             } else {
+                if (item.kind == DownloadKind.TORRENT) {
+                    val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), item.id)
+                    torrentFolder.deleteRecursively()
+                } else {
+                    platform.fileStore.delete(item.id)
+                }
+            }
+            fileChoices.remove(item.id)
+            repository.delete(item.id)
+        }
+        triggerScheduler()
+    }
+
+    override suspend fun deleteAllForProfile(profileId: Long) {
+        val items = repository.getAll().filter { it.profileId == profileId }
+        for (item in items) {
+            cancelActiveJob(item.id)
+            if (item.galleryUri == null) {
                 if (item.kind == DownloadKind.TORRENT) {
                     val torrentFolder = File(File(platform.fileStore.root, TORRENT_SUBDIR), item.id)
                     torrentFolder.deleteRecursively()
@@ -488,7 +516,7 @@ class DefaultDownloadManager(
 
     override suspend fun moveAllToGallery() {
         val completed =
-            repository.getAll().filter {
+            repository.getAllForActiveProfile().filter {
                 it.state == DownloadState.COMPLETED &&
                     (it.galleryState == GalleryState.NONE || it.galleryState == GalleryState.FAILED)
             }
@@ -744,6 +772,7 @@ private fun createEnqueuedItem(
     id: String,
     request: DownloadRequest,
     now: Long,
+    profileId: Long = 1L,
 ): DownloadItem {
     val (kind, fileName) =
         when (val source = request.source) {
@@ -776,6 +805,7 @@ private fun createEnqueuedItem(
         allowMetered = false,
         createdAt = now,
         updatedAt = now,
+        profileId = profileId,
     )
 }
 

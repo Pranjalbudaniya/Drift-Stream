@@ -17,4 +17,6 @@ data class ProfileEntity(
     val createdAt: Long,
     val lastUsedAt: Long,
     val sortOrder: Int,
+    val avatarCustomColor: Int? = null,
+    val avatarPhotoStamp: Long? = null,
 )

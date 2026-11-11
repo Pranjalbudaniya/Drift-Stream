@@ -85,6 +85,8 @@ class ProfileRepositoryImpl
             name: String,
             avatarColor: Int,
             avatarEmoji: String?,
+            avatarCustomColor: Int?,
+            avatarPhotoStamp: Long?,
         ): CreateResult =
             withContext(ioDispatcher) {
                 val existing = profileDao.getAll()
@@ -99,6 +101,8 @@ class ProfileRepositoryImpl
                                 name = validation.trimmedName,
                                 avatarColor = avatarColor,
                                 avatarEmoji = avatarEmoji,
+                                avatarCustomColor = avatarCustomColor,
+                                avatarPhotoStamp = avatarPhotoStamp,
                                 isOwner = false,
                                 needsSetup = false,
                                 pinHash = null,
@@ -137,11 +141,14 @@ class ProfileRepositoryImpl
                 }
             }
 
+        @Suppress("LongParameterList")
         override suspend fun completeSetup(
             id: Long,
             name: String,
             avatarColor: Int,
             avatarEmoji: String?,
+            avatarCustomColor: Int?,
+            avatarPhotoStamp: Long?,
         ): UpdateResult =
             withContext(ioDispatcher) {
                 val existing = profileDao.getById(id) ?: return@withContext UpdateResult.NotFound
@@ -153,6 +160,8 @@ class ProfileRepositoryImpl
                                 name = validation.trimmedName,
                                 avatarColor = avatarColor,
                                 avatarEmoji = avatarEmoji,
+                                avatarCustomColor = avatarCustomColor,
+                                avatarPhotoStamp = avatarPhotoStamp,
                                 needsSetup = false,
                             )
                         profileDao.update(updated)
@@ -164,6 +173,13 @@ class ProfileRepositoryImpl
                     }
                 }
             }
+
+        override suspend fun setAvatarPhoto(
+            profileId: Long,
+            stamp: Long?,
+        ) = withContext(ioDispatcher) {
+            profileDao.updateAvatarPhotoStamp(profileId, stamp)
+        }
 
         override suspend fun delete(id: Long): DeleteResult =
             withContext(ioDispatcher) {
@@ -212,6 +228,8 @@ fun ProfileEntity.toDomain(): Profile =
         createdAt = createdAt,
         lastUsedAt = lastUsedAt,
         sortOrder = sortOrder,
+        avatarCustomColor = avatarCustomColor,
+        avatarPhotoStamp = avatarPhotoStamp,
     )
 
 fun Profile.toEntity(): ProfileEntity =
@@ -228,4 +246,6 @@ fun Profile.toEntity(): ProfileEntity =
         createdAt = createdAt,
         lastUsedAt = lastUsedAt,
         sortOrder = sortOrder,
+        avatarCustomColor = avatarCustomColor,
+        avatarPhotoStamp = avatarPhotoStamp,
     )

@@ -49,16 +49,26 @@ interface ProfileRepository {
         name: String,
         avatarColor: Int,
         avatarEmoji: String?,
+        avatarCustomColor: Int? = null,
+        avatarPhotoStamp: Long? = null,
     ): CreateResult
 
     suspend fun update(profile: Profile): UpdateResult
 
+    @Suppress("LongParameterList")
     suspend fun completeSetup(
         id: Long,
         name: String,
         avatarColor: Int,
         avatarEmoji: String?,
+        avatarCustomColor: Int? = null,
+        avatarPhotoStamp: Long? = null,
     ): UpdateResult
+
+    suspend fun setAvatarPhoto(
+        profileId: Long,
+        stamp: Long?,
+    )
 
     suspend fun delete(id: Long): DeleteResult
 }

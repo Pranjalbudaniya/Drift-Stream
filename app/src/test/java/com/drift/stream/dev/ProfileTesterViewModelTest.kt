@@ -51,6 +51,8 @@ class ProfileTesterViewModelTest {
             name: String,
             avatarColor: Int,
             avatarEmoji: String?,
+            avatarCustomColor: Int?,
+            avatarPhotoStamp: Long?,
         ): CreateResult {
             if (name.isBlank()) {
                 return CreateResult.InvalidName(NameResult.Blank)
@@ -67,6 +69,8 @@ class ProfileTesterViewModelTest {
                     createdAt = 1000L,
                     lastUsedAt = 1000L,
                     sortOrder = 0,
+                    avatarCustomColor = avatarCustomColor,
+                    avatarPhotoStamp = avatarPhotoStamp,
                 )
             profilesFlow.value = profilesFlow.value + profile
             return CreateResult.Created(profile)
@@ -79,7 +83,19 @@ class ProfileTesterViewModelTest {
             name: String,
             avatarColor: Int,
             avatarEmoji: String?,
+            avatarCustomColor: Int?,
+            avatarPhotoStamp: Long?,
         ): UpdateResult = error("unused")
+
+        override suspend fun setAvatarPhoto(
+            profileId: Long,
+            stamp: Long?,
+        ) {
+            profilesFlow.value =
+                profilesFlow.value.map {
+                    if (it.id == profileId) it.copy(avatarPhotoStamp = stamp) else it
+                }
+        }
 
         override suspend fun delete(id: Long): DeleteResult {
             val target = profilesFlow.value.firstOrNull { it.id == id }

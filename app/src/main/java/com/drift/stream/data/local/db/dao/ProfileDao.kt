@@ -39,4 +39,10 @@ interface ProfileDao {
 
     @Query("DELETE FROM profiles WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query("UPDATE profiles SET avatarPhotoStamp = :stamp WHERE id = :id")
+    suspend fun updateAvatarPhotoStamp(
+        id: Long,
+        stamp: Long?,
+    )
 }

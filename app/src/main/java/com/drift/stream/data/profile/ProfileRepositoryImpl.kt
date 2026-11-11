@@ -9,6 +9,7 @@ import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.CreateResult
 import com.drift.stream.domain.repository.DeleteResult
+import com.drift.stream.domain.repository.DownloadManager
 import com.drift.stream.domain.repository.ProfileRepository
 import com.drift.stream.domain.repository.UpdateResult
 import com.drift.stream.domain.usecase.NameResult
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 @Singleton
@@ -29,6 +31,7 @@ class ProfileRepositoryImpl
         @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
         private val activeProfileProvider: ActiveProfileProvider,
         private val profileDataStores: ProfileDataStores,
+        private val downloadManager: Provider<DownloadManager>,
     ) : ProfileRepository {
         private val profileDao = database.profileDao()
         private val addonDao = database.addonDao()
@@ -147,6 +150,7 @@ class ProfileRepositoryImpl
                 if (id == activeProfileProvider.activeProfileId.value) {
                     return@withContext DeleteResult.RefusedActive
                 }
+                downloadManager.get().deleteAllForProfile(id)
                 transactionRunner.run {
                     profileAddonPrefsDao.deleteAllForProfile(id)
                     addonDao.deleteAllForProfile(id)

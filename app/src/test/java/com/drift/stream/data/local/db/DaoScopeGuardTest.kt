@@ -1,5 +1,6 @@
 package com.drift.stream.data.local.db
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -77,5 +78,50 @@ class DaoScopeGuardTest {
         }
 
         assertTrue("Expected multiple queries in addon DAOs", totalQueries >= 8)
+    }
+
+    @Test
+    fun DS3_downloadDao_everyQueryIsScopedOrOnTheEngineAllowList() {
+        val source = resolveDaoSource("DownloadDao.kt")
+        // Download IDs are generated as UUID.randomUUID().toString() in DefaultDownloadManager.enqueue,
+        // so queries targeting a single download by ID are globally unique across profiles.
+        // Engine-wide queries (getAll, observeEverything) are explicitly permitted for the download engine,
+        // service lifecycle, and aggregate notifications.
+        val engineAllowList =
+            setOf(
+                "get",
+                "getAll",
+                "observeEverything",
+                "updateProgress",
+                "updateState",
+                "updateCompleted",
+                "setAllowMetered",
+                "delete",
+            )
+        val queryFunctionRegex =
+            Regex("""@Query\((.*?)\)\s*(?:suspend\s+)?fun\s+(\w+)""", setOf(RegexOption.DOT_MATCHES_ALL))
+        val matches = queryFunctionRegex.findAll(source).toList()
+        assertTrue("Expected queries in DownloadDao.kt", matches.isNotEmpty())
+
+        var scopedCount = 0
+        var allowListCount = 0
+
+        for (match in matches) {
+            val queryBody = match.groupValues[1]
+            val functionName = match.groupValues[2]
+
+            if (queryBody.contains("profileId")) {
+                scopedCount++
+            } else {
+                assertTrue(
+                    "Function '$functionName' without profileId must be in engineAllowList: $queryBody",
+                    functionName in engineAllowList,
+                )
+                allowListCount++
+            }
+        }
+
+        assertTrue("Expected scoped queries", scopedCount >= 4)
+        assertEquals(engineAllowList.size, allowListCount)
     }
 }

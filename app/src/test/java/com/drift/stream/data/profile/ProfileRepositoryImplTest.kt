@@ -13,6 +13,7 @@ import com.drift.stream.data.local.db.entity.ProfileEntity
 import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.CreateResult
 import com.drift.stream.domain.repository.DeleteResult
+import com.drift.stream.domain.repository.DownloadManager
 import com.drift.stream.testutil.FakeActiveProfileProvider
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -56,6 +57,7 @@ class ProfileRepositoryImplTest {
             },
         activeProfileProvider: ActiveProfileProvider = FakeActiveProfileProvider(1L),
         profileDataStores: ProfileDataStores = mockk(relaxed = true),
+        downloadManager: DownloadManager = mockk(relaxed = true),
     ): ProfileRepositoryImpl =
         ProfileRepositoryImpl(
             database = database,
@@ -63,6 +65,7 @@ class ProfileRepositoryImplTest {
             ioDispatcher = UnconfinedTestDispatcher(testScheduler),
             activeProfileProvider = activeProfileProvider,
             profileDataStores = profileDataStores,
+            downloadManager = { downloadManager },
         )
 
     @Test
@@ -341,5 +344,60 @@ class ProfileRepositoryImplTest {
             val result = repository.delete(2L)
             assertEquals(DeleteResult.Deleted, result)
             coVerify(exactly = 1) { profileAddonPrefsDao.deleteAllForProfile(2L) }
+        }
+
+    @Test
+    fun DL11_profileDelete_callsDownloadCleanupBeforeTheTransaction() =
+        runTest {
+            val profileDao = mockk<ProfileDao>(relaxed = true)
+            val nonOwner =
+                ProfileEntity(
+                    id = 2L,
+                    name = "Guest",
+                    avatarColor = 1,
+                    avatarEmoji = null,
+                    isOwner = false,
+                    needsSetup = false,
+                    pinHash = null,
+                    pinSalt = null,
+                    pinIterations = null,
+                    createdAt = 1000L,
+                    lastUsedAt = 1000L,
+                    sortOrder = 1,
+                )
+            coEvery { profileDao.getById(2L) } returns nonOwner
+            coEvery { profileDao.count() } returns 2
+
+            val downloadManager = mockk<DownloadManager>(relaxed = true)
+            val executionOrder = mutableListOf<String>()
+
+            coEvery { downloadManager.deleteAllForProfile(2L) } answers {
+                executionOrder.add("downloadManager.deleteAllForProfile")
+            }
+
+            val transactionRunner =
+                object : TransactionRunner {
+                    override suspend fun <T> run(block: suspend () -> T): T {
+                        executionOrder.add("transactionRunner.run")
+                        return block()
+                    }
+                }
+
+            val repository =
+                createRepository(
+                    database = mockDatabase(profileDao = profileDao),
+                    transactionRunner = transactionRunner,
+                    activeProfileProvider = FakeActiveProfileProvider(1L),
+                    downloadManager = downloadManager,
+                )
+
+            val result = repository.delete(2L)
+            assertEquals(DeleteResult.Deleted, result)
+
+            coVerify(exactly = 1) { downloadManager.deleteAllForProfile(2L) }
+            assertEquals(
+                listOf("downloadManager.deleteAllForProfile", "transactionRunner.run"),
+                executionOrder,
+            )
         }
 }

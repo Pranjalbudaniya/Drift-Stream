@@ -269,7 +269,7 @@ class DatabaseDevViewModel
                                 java.security.MessageDigest
                                     .getInstance("SHA-256")
                                     .digest(transportUrl.toByteArray(Charsets.UTF_8))
-                                    .joinToString("") { "%02x".format(it) }
+                                    .joinToString("") { String.format(java.util.Locale.US, "%02x", it) }
                                     .take(8)
                             } else {
                                 ""

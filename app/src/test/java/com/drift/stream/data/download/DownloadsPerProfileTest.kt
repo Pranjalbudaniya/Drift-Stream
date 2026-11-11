@@ -1,18 +1,27 @@
 package com.drift.stream.data.download
 
+import android.app.NotificationManager
+import android.content.Context
 import com.drift.stream.data.torrent.NetworkStatus
 import com.drift.stream.domain.model.DownloadItem
 import com.drift.stream.domain.model.DownloadState
 import com.drift.stream.domain.model.EnqueueResult
 import com.drift.stream.domain.model.PauseReason
+import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.repository.ProfileRepository
 import com.drift.stream.testutil.FakeActiveProfileProvider
+import io.mockk.every
+import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -167,7 +176,7 @@ class DownloadsPerProfileTest {
     @Test
     fun DL7_waitingForWifiResume_coversEveryProfile() =
         runTest {
-            val (manager, deps) = createSetup(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            val (_, deps) = createSetup(backgroundScope, UnconfinedTestDispatcher(testScheduler))
             deps.downloader.handler =
                 {
                     _,
@@ -220,4 +229,95 @@ class DownloadsPerProfileTest {
             deps.activeProfile.setActive(2L)
             assertEquals(2, manager.allItems.first().size)
         }
+
+    @Test
+    fun DL8_notification_hidesTitlesWithTwoOrMoreProfiles() =
+        runTest {
+            val profileFlow = MutableStateFlow(listOf(testProfile(1L, "Me", true)))
+            val profileRepo = mockk<ProfileRepository>()
+            every { profileRepo.profiles } returns profileFlow
+
+            val context = mockk<Context>(relaxed = true)
+            every { context.getSystemService(Context.NOTIFICATION_SERVICE) } returns
+                mockk<NotificationManager>(relaxed = true)
+
+            val notifier =
+                DownloadNotifierImpl(
+                    context = context,
+                    profileRepository = { profileRepo },
+                    scope =
+                        kotlinx.coroutines.CoroutineScope(
+                            backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler),
+                        ),
+                )
+
+            // With 1 profile: titles are present
+            assertEquals("Dune: Part Two", notifier.resolveCompletedText("Dune: Part Two"))
+            assertEquals("Dune: Part Two · Storage full", notifier.resolveFailedText("Dune: Part Two", "Storage full"))
+
+            // When two or more profiles exist: titles are hidden
+            profileFlow.value = listOf(testProfile(1L, "Me", true), testProfile(2L, "Other", false))
+            advanceUntilIdle()
+
+            assertNull(notifier.resolveCompletedText("Dune: Part Two"))
+            assertEquals("Storage full", notifier.resolveFailedText("Dune: Part Two", "Storage full"))
+        }
+
+    @Test
+    fun DL10_deleteAllForProfile_cancelsRunningDownloadsAndRemovesFilesThenRows() =
+        runTest {
+            val (manager, deps) = createSetup(backgroundScope, UnconfinedTestDispatcher(testScheduler))
+            deps.downloader.handler = { _, _ ->
+                kotlinx.coroutines.CompletableDeferred<com.drift.stream.domain.repository.HttpResult>().await()
+            }
+
+            val item1 = createTestDownloadItem("d1", state = DownloadState.DOWNLOADING).copy(profileId = 1L)
+            val item2 = createTestDownloadItem("d2", state = DownloadState.DOWNLOADING).copy(profileId = 2L)
+            deps.repo.insert(item1)
+            deps.repo.insert(item2)
+
+            val partFile2 = deps.fileStore.partFile("d2")
+            partFile2.parentFile?.mkdirs()
+            partFile2.writeText("partial download profile 2")
+
+            val partFile1 = deps.fileStore.partFile("d1")
+            partFile1.parentFile?.mkdirs()
+            partFile1.writeText("partial download profile 1")
+
+            assertTrue(partFile2.exists())
+            assertTrue(partFile1.exists())
+
+            // Delete all for profile 2
+            manager.deleteAllForProfile(2L)
+            advanceUntilIdle()
+
+            // Profile 2 is cancelled, files removed, DB row deleted
+            assertNull(deps.repo.get("d2"))
+            assertFalse(partFile2.exists())
+
+            // Profile 1 is completely untouched
+            assertNotNull(deps.repo.get("d1"))
+            assertEquals(DownloadState.DOWNLOADING, deps.repo.get("d1")?.state)
+            assertTrue(partFile1.exists())
+        }
 }
+
+private fun testProfile(
+    id: Long,
+    name: String,
+    isOwner: Boolean = false,
+): Profile =
+    Profile(
+        id = id,
+        name = name,
+        avatarColor = 0,
+        avatarEmoji = null,
+        isOwner = isOwner,
+        needsSetup = false,
+        pinHash = null,
+        pinSalt = null,
+        pinIterations = null,
+        createdAt = 0L,
+        lastUsedAt = 0L,
+        sortOrder = 0,
+    )

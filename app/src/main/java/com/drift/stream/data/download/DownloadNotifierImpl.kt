@@ -8,14 +8,21 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.drift.stream.MainActivity
 import com.drift.stream.R
+import com.drift.stream.di.IoDispatcher
 import com.drift.stream.domain.repository.DownloadNotifier
 import com.drift.stream.domain.repository.EXTRA_OPEN_DOWNLOADS
 import com.drift.stream.domain.repository.NOTIFICATION_CHANNEL_EVENTS
 import com.drift.stream.domain.repository.NOTIFICATION_CHANNEL_PROGRESS
+import com.drift.stream.domain.repository.ProfileRepository
 import com.drift.stream.domain.usecase.AggregateNotificationModel
 import com.drift.stream.domain.usecase.DownloadEventNotification
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 const val NOTIFICATION_ID_AGGREGATE = 10001
@@ -26,42 +33,66 @@ const val ACTION_RESUME_ALL = "com.drift.stream.download.RESUME_ALL"
 
 @Singleton
 class DownloadNotifierImpl
-    @Inject
-    constructor(
+    internal constructor(
         @ApplicationContext private val context: Context,
+        private val profileRepository: Provider<ProfileRepository>,
+        scope: CoroutineScope,
     ) : DownloadNotifier {
         private val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
+        internal var hasMultipleProfiles: Boolean = false
+            internal set
+
         init {
             createChannels()
+            scope.launch {
+                runCatching {
+                    profileRepository.get().profiles.collect { list ->
+                        hasMultipleProfiles = list.size >= 2
+                    }
+                }
+            }
         }
 
+        @Inject
+        constructor(
+            @ApplicationContext context: Context,
+            profileRepository: Provider<ProfileRepository>,
+            @IoDispatcher ioDispatcher: CoroutineDispatcher,
+        ) : this(
+            context = context,
+            profileRepository = profileRepository,
+            scope = CoroutineScope(SupervisorJob() + ioDispatcher),
+        )
+
         private fun createChannels() {
-            val progressChannel =
-                NotificationChannel(
-                    NOTIFICATION_CHANNEL_PROGRESS,
-                    context.getString(R.string.download_notification_channel_progress),
-                    NotificationManager.IMPORTANCE_LOW,
-                ).apply {
-                    setSound(null, null)
-                    enableVibration(false)
-                }
+            runCatching {
+                val progressChannel =
+                    NotificationChannel(
+                        NOTIFICATION_CHANNEL_PROGRESS,
+                        context.getString(R.string.download_notification_channel_progress),
+                        NotificationManager.IMPORTANCE_LOW,
+                    ).apply {
+                        setSound(null, null)
+                        enableVibration(false)
+                    }
 
-            val eventsChannel =
-                NotificationChannel(
-                    NOTIFICATION_CHANNEL_EVENTS,
-                    context.getString(R.string.download_notification_channel_events),
-                    NotificationManager.IMPORTANCE_DEFAULT,
-                )
+                val eventsChannel =
+                    NotificationChannel(
+                        NOTIFICATION_CHANNEL_EVENTS,
+                        context.getString(R.string.download_notification_channel_events),
+                        NotificationManager.IMPORTANCE_DEFAULT,
+                    )
 
-            notificationManager.createNotificationChannel(progressChannel)
-            notificationManager.createNotificationChannel(eventsChannel)
+                notificationManager.createNotificationChannel(progressChannel)
+                notificationManager.createNotificationChannel(eventsChannel)
+            }
         }
 
         override fun showAggregate(model: AggregateNotificationModel) {
-            val title = formatString(model.titleRes, model.titleArgs)
-            val text = model.textRes?.let { formatString(it, model.textArgs) }
+            val title = formatString(context, model.titleRes, model.titleArgs)
+            val text = model.textRes?.let { formatString(context, it, model.textArgs) }
 
             val publicNotif =
                 NotificationCompat
@@ -79,7 +110,7 @@ class DownloadNotifierImpl
                     .setOngoing(true)
                     .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                     .setPublicVersion(publicNotif)
-                    .setContentIntent(createContentIntent())
+                    .setContentIntent(createContentIntent(context))
 
             if (model.indeterminate) {
                 builder.setProgress(0, 0, true)
@@ -91,13 +122,13 @@ class DownloadNotifierImpl
                 builder.addAction(
                     0,
                     context.getString(R.string.download_notif_pause_all),
-                    createServicePendingIntent(ACTION_PAUSE_ALL),
+                    createServicePendingIntent(context, ACTION_PAUSE_ALL),
                 )
             } else if (model.resumeAllAction) {
                 builder.addAction(
                     0,
                     context.getString(R.string.download_notif_resume_all),
-                    createServicePendingIntent(ACTION_RESUME_ALL),
+                    createServicePendingIntent(context, ACTION_RESUME_ALL),
                 )
             }
 
@@ -112,6 +143,13 @@ class DownloadNotifierImpl
             }
         }
 
+        internal fun resolveCompletedText(privateText: String): String? = if (hasMultipleProfiles) null else privateText
+
+        internal fun resolveFailedText(
+            privateText: String,
+            reasonText: String,
+        ): String = if (hasMultipleProfiles) reasonText else "$privateText · $reasonText"
+
         private fun showCompletedEvent(notification: DownloadEventNotification.Completed) {
             val publicNotif =
                 NotificationCompat
@@ -120,16 +158,18 @@ class DownloadNotifierImpl
                     .setContentTitle(context.getString(notification.publicTitleRes))
                     .build()
 
+            val contentText = resolveCompletedText(notification.privateText)
+
             val builder =
                 NotificationCompat
                     .Builder(context, NOTIFICATION_CHANNEL_EVENTS)
                     .setSmallIcon(R.drawable.ic_download)
                     .setContentTitle(context.getString(notification.titleRes))
-                    .setContentText(notification.privateText)
+                    .setContentText(contentText)
                     .setAutoCancel(true)
                     .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                     .setPublicVersion(publicNotif)
-                    .setContentIntent(createContentIntent())
+                    .setContentIntent(createContentIntent(context))
 
             notificationManager.notify(notification.downloadId.hashCode(), builder.build())
         }
@@ -143,7 +183,7 @@ class DownloadNotifierImpl
                     .build()
 
             val reasonText = context.getString(notification.reasonRes)
-            val text = "${notification.privateText} · $reasonText"
+            val text = resolveFailedText(notification.privateText, reasonText)
 
             val builder =
                 NotificationCompat
@@ -154,7 +194,7 @@ class DownloadNotifierImpl
                     .setAutoCancel(true)
                     .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                     .setPublicVersion(publicNotif)
-                    .setContentIntent(createContentIntent())
+                    .setContentIntent(createContentIntent(context))
 
             notificationManager.notify(notification.downloadId.hashCode(), builder.build())
         }
@@ -176,13 +216,13 @@ class DownloadNotifierImpl
                     .setAutoCancel(true)
                     .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                     .setPublicVersion(publicNotif)
-                    .setContentIntent(createContentIntent())
+                    .setContentIntent(createContentIntent(context))
 
             if (notification.resumeActionAvailable) {
                 builder.addAction(
                     0,
                     context.getString(R.string.download_notif_resume_all),
-                    createServicePendingIntent(ACTION_RESUME_ALL),
+                    createServicePendingIntent(context, ACTION_RESUME_ALL),
                 )
             }
 
@@ -196,38 +236,42 @@ class DownloadNotifierImpl
         override fun cancelEvent(downloadId: String) {
             notificationManager.cancel(downloadId.hashCode())
         }
+    }
 
-        private fun createContentIntent(): PendingIntent {
-            val intent =
-                Intent(context, MainActivity::class.java).apply {
-                    putExtra(EXTRA_OPEN_DOWNLOADS, true)
-                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                }
-            return PendingIntent.getActivity(
-                context,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
+private fun createContentIntent(context: Context): PendingIntent {
+    val intent =
+        Intent(context, MainActivity::class.java).apply {
+            putExtra(EXTRA_OPEN_DOWNLOADS, true)
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
+    return PendingIntent.getActivity(
+        context,
+        0,
+        intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+}
 
-        private fun createServicePendingIntent(action: String): PendingIntent {
-            val intent = Intent(context, DownloadService::class.java).apply { this.action = action }
-            return PendingIntent.getService(
-                context,
-                action.hashCode(),
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-        }
+private fun createServicePendingIntent(
+    context: Context,
+    action: String,
+): PendingIntent {
+    val intent = Intent(context, DownloadService::class.java).apply { this.action = action }
+    return PendingIntent.getService(
+        context,
+        action.hashCode(),
+        intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+}
 
-        private fun formatString(
-            resId: Int,
-            args: List<Any>,
-        ): String =
-            when (args.size) {
-                0 -> context.getString(resId)
-                1 -> context.getString(resId, args[0])
-                else -> context.getString(resId, args[0], args[1])
-            }
+private fun formatString(
+    context: Context,
+    resId: Int,
+    args: List<Any>,
+): String =
+    when (args.size) {
+        0 -> context.getString(resId)
+        1 -> context.getString(resId, args[0])
+        else -> context.getString(resId, args[0], args[1])
     }

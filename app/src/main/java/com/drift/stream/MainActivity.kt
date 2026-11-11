@@ -13,6 +13,8 @@ import androidx.compose.runtime.getValue
 import com.drift.stream.data.remote.addon.AddonUrlBuilder
 import com.drift.stream.presentation.common.OneShot
 import com.drift.stream.presentation.feature.player.PlaybackSessionHolder
+import com.drift.stream.presentation.navigation.AppGate
+import com.drift.stream.presentation.navigation.AppGateViewModel
 import com.drift.stream.presentation.navigation.NexusApp
 import com.drift.stream.presentation.theme.NexusTheme
 import com.drift.stream.presentation.theme.ThemeUiState
@@ -23,6 +25,7 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val themeViewModel: ThemeViewModel by viewModels()
+    private val gateViewModel: AppGateViewModel by viewModels()
     private val deepLinkHolder = OneShot<String>()
     private val openDownloadsHolder = OneShot<Unit>()
 
@@ -32,6 +35,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        installFirstFrameHold(this, gateViewModel, themeViewModel)
         handleDeepLinkIntent(intent)
         handleOpenDownloadsIntent(intent)
         setContent {
@@ -46,10 +50,11 @@ class MainActivity : ComponentActivity() {
                         )
                     NexusTheme(settings = effectiveSettings) {
                         Surface(color = MaterialTheme.colorScheme.background) {
-                            NexusApp(
+                            AppGate(
                                 deepLinkHolder = deepLinkHolder,
                                 openDownloadsHolder = openDownloadsHolder,
                                 playbackSessionHolder = playbackSessionHolder,
+                                gateViewModel = gateViewModel,
                             )
                         }
                     }

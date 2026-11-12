@@ -4,6 +4,7 @@ import com.drift.stream.data.local.db.NexusDatabase
 import com.drift.stream.data.local.db.TransactionRunner
 import com.drift.stream.data.local.db.dao.ProfileDao
 import com.drift.stream.data.local.db.entity.ProfileEntity
+import com.drift.stream.domain.model.ProfileDraft
 import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.DownloadManager
 import com.drift.stream.domain.repository.UpdateResult
@@ -50,7 +51,9 @@ class CompleteSetupTest {
             activeProfileProvider = activeProfileProvider,
             profileDataStores = mockk(relaxed = true),
             downloadManager = { mockk(relaxed = true) },
-        )
+        ).apply {
+            this.avatarPhotoStore = mockk(relaxed = true)
+        }
 
     @Test
     fun CS1_completeSetup_updatesNameAvatarAndClearsNeedsSetupInOneWrite() =
@@ -78,7 +81,7 @@ class CompleteSetupTest {
             coEvery { profileDao.update(capture(slot)) } returns Unit
 
             val repo = createRepository(mockDatabase(profileDao))
-            val result = repo.completeSetup(1L, "Alex", 3, "🚀")
+            val result = repo.completeSetup(1L, ProfileDraft(name = "Alex", avatarColor = 3, avatarEmoji = "🚀"))
 
             assertTrue(result is UpdateResult.Updated)
             val updated = (result as UpdateResult.Updated).profile
@@ -101,7 +104,7 @@ class CompleteSetupTest {
             coEvery { profileDao.getById(99L) } returns null
 
             val repo = createRepository(mockDatabase(profileDao))
-            val result = repo.completeSetup(99L, "Alex", 3, "🚀")
+            val result = repo.completeSetup(99L, ProfileDraft(name = "Alex", avatarColor = 3, avatarEmoji = "🚀"))
 
             assertEquals(UpdateResult.NotFound, result)
             coVerify(exactly = 0) { profileDao.update(any()) }
@@ -130,7 +133,7 @@ class CompleteSetupTest {
             coEvery { profileDao.getAll() } returns listOf(existing)
 
             val repo = createRepository(mockDatabase(profileDao))
-            val result = repo.completeSetup(1L, "   ", 3, "🚀")
+            val result = repo.completeSetup(1L, ProfileDraft(name = "   ", avatarColor = 3, avatarEmoji = "🚀"))
 
             assertTrue(result is UpdateResult.InvalidName)
             coVerify(exactly = 0) { profileDao.update(any()) }

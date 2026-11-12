@@ -3,6 +3,7 @@ package com.drift.stream.presentation.feature.profile
 import androidx.lifecycle.SavedStateHandle
 import com.drift.stream.data.profile.AvatarPhotoStore
 import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.model.ProfileDraft
 import com.drift.stream.domain.repository.ProfileRepository
 import com.drift.stream.domain.repository.UpdateResult
 import io.mockk.coEvery
@@ -70,7 +71,7 @@ class ProfileSetupViewModelTest {
             every { profileRepo.profiles } returns profilesFlow
 
             coEvery {
-                profileRepo.completeSetup(1L, "Asha", 2, "🦊")
+                profileRepo.completeSetup(1L, ProfileDraft("Asha", 2, "🦊"))
             } returns UpdateResult.Updated(owner.copy(name = "Asha", needsSetup = false))
 
             val savedStateHandle = SavedStateHandle()
@@ -96,7 +97,7 @@ class ProfileSetupViewModelTest {
             testScheduler.advanceUntilIdle()
 
             coVerify(exactly = 1) {
-                profileRepo.completeSetup(1L, "Asha", 2, "🦊")
+                profileRepo.completeSetup(1L, ProfileDraft("Asha", 2, "🦊"))
             }
             assertEquals(SetupEffect.Done(1L), receivedDone)
 
@@ -112,7 +113,7 @@ class ProfileSetupViewModelTest {
             every { profileRepo.profiles } returns profilesFlow
 
             coEvery {
-                profileRepo.completeSetup(any(), any(), any(), any())
+                profileRepo.completeSetup(any(), any())
             } returns UpdateResult.NotFound
 
             val savedStateHandle = SavedStateHandle()
@@ -152,11 +153,14 @@ class ProfileSetupViewModelTest {
             coEvery {
                 profileRepo.completeSetup(
                     id = 1L,
-                    name = "Me",
-                    avatarColor = 2,
-                    avatarEmoji = null,
-                    avatarCustomColor = null,
-                    avatarPhotoStamp = testTime,
+                    draft =
+                        ProfileDraft(
+                            name = "Me",
+                            avatarColor = 2,
+                            avatarEmoji = null,
+                            avatarCustomColor = null,
+                            avatarPhotoStamp = testTime,
+                        ),
                 )
             } returns UpdateResult.Updated(owner.copy(avatarPhotoStamp = testTime))
 
@@ -180,11 +184,14 @@ class ProfileSetupViewModelTest {
             coVerify(exactly = 1) {
                 profileRepo.completeSetup(
                     id = 1L,
-                    name = "Me",
-                    avatarColor = 2,
-                    avatarEmoji = null,
-                    avatarCustomColor = null,
-                    avatarPhotoStamp = testTime,
+                    draft =
+                        ProfileDraft(
+                            name = "Me",
+                            avatarColor = 2,
+                            avatarEmoji = null,
+                            avatarCustomColor = null,
+                            avatarPhotoStamp = testTime,
+                        ),
                 )
             }
         }

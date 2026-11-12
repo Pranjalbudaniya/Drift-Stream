@@ -4,6 +4,7 @@ import com.drift.stream.data.local.db.NexusDatabase
 import com.drift.stream.data.local.db.TransactionRunner
 import com.drift.stream.data.local.db.dao.ProfileDao
 import com.drift.stream.data.local.db.entity.ProfileEntity
+import com.drift.stream.domain.model.ProfileDraft
 import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.CreateResult
 import com.drift.stream.domain.repository.DownloadManager
@@ -51,7 +52,9 @@ class ProfileRepositoryAvatarTest {
             activeProfileProvider = activeProfileProvider,
             profileDataStores = mockk(relaxed = true),
             downloadManager = { downloadManager },
-        )
+        ).apply {
+            this.avatarPhotoStore = mockk(relaxed = true)
+        }
 
     @Test
     fun PR1_create_withCustomColor_roundTrips() =
@@ -65,11 +68,13 @@ class ProfileRepositoryAvatarTest {
             val repo = createRepository(mockDatabase(profileDao))
             val result =
                 repo.create(
-                    name = "Custom",
-                    avatarColor = 1,
-                    avatarEmoji = null,
-                    avatarCustomColor = 0xFF112233.toInt(),
-                    avatarPhotoStamp = null,
+                    ProfileDraft(
+                        name = "Custom",
+                        avatarColor = 1,
+                        avatarEmoji = null,
+                        avatarCustomColor = 0xFF112233.toInt(),
+                        avatarPhotoStamp = null,
+                    ),
                 )
 
             assertTrue(result is CreateResult.Created)

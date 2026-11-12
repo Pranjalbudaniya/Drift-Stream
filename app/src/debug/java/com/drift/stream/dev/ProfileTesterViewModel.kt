@@ -6,6 +6,7 @@ import com.drift.stream.data.profile.ActiveProfileHolder
 import com.drift.stream.domain.model.ListStatus
 import com.drift.stream.domain.model.MetaPreview
 import com.drift.stream.domain.model.PosterShape
+import com.drift.stream.domain.model.ProfileDraft
 import com.drift.stream.domain.model.WatchProgress
 import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.CreateResult
@@ -132,7 +133,7 @@ class ProfileTesterViewModel
             viewModelScope.launch {
                 val currentProfiles = uiState.value.profiles
                 val nextColor = currentProfiles.size
-                when (val result = profileRepository.create(name = name, avatarColor = nextColor, avatarEmoji = null)) {
+                when (val result = profileRepository.create(ProfileDraft(name = name, avatarColor = nextColor))) {
                     is CreateResult.Created -> {
                         messageFlow.value = "Created ${result.profile.name}"
                     }

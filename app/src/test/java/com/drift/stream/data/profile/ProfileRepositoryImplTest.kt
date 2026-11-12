@@ -10,6 +10,8 @@ import com.drift.stream.data.local.db.dao.ProfileDao
 import com.drift.stream.data.local.db.dao.ProgressDao
 import com.drift.stream.data.local.db.dao.SearchHistoryDao
 import com.drift.stream.data.local.db.entity.ProfileEntity
+import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.model.ProfileDraft
 import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.CreateResult
 import com.drift.stream.domain.repository.DeleteResult
@@ -66,7 +68,9 @@ class ProfileRepositoryImplTest {
             activeProfileProvider = activeProfileProvider,
             profileDataStores = profileDataStores,
             downloadManager = { downloadManager },
-        )
+        ).apply {
+            this.avatarPhotoStore = mockk(relaxed = true)
+        }
 
     @Test
     fun PF1_ensureDefaultProfile_createsProfileOneWhenEmpty() =
@@ -165,7 +169,7 @@ class ProfileRepositoryImplTest {
                     transactionRunner = transactionRunner,
                 )
 
-            val result = repository.create(name = "Guest", avatarColor = 2, avatarEmoji = "🍿")
+            val result = repository.create(ProfileDraft(name = "Guest", avatarColor = 2, avatarEmoji = "🍿"))
             assertTrue(result is CreateResult.Created)
             val created = (result as CreateResult.Created).profile
             assertEquals(2L, created.id)

@@ -2,6 +2,7 @@ package com.drift.stream.dev
 
 import com.drift.stream.data.profile.ActiveProfileHolder
 import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.model.ProfileDraft
 import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.CreateResult
 import com.drift.stream.domain.repository.DeleteResult
@@ -47,30 +48,24 @@ class ProfileTesterViewModelTest {
 
         override suspend fun get(id: Long): Profile? = profilesFlow.value.firstOrNull { it.id == id }
 
-        override suspend fun create(
-            name: String,
-            avatarColor: Int,
-            avatarEmoji: String?,
-            avatarCustomColor: Int?,
-            avatarPhotoStamp: Long?,
-        ): CreateResult {
-            if (name.isBlank()) {
+        override suspend fun create(draft: ProfileDraft): CreateResult {
+            if (draft.name.isBlank()) {
                 return CreateResult.InvalidName(NameResult.Blank)
             }
             val nextId = (profilesFlow.value.maxOfOrNull { it.id } ?: 0L) + 1L
             val profile =
                 Profile(
                     id = nextId,
-                    name = name,
-                    avatarColor = avatarColor,
-                    avatarEmoji = avatarEmoji,
+                    name = draft.name,
+                    avatarColor = draft.avatarColor,
+                    avatarEmoji = draft.avatarEmoji,
                     isOwner = false,
                     needsSetup = false,
                     createdAt = 1000L,
                     lastUsedAt = 1000L,
                     sortOrder = 0,
-                    avatarCustomColor = avatarCustomColor,
-                    avatarPhotoStamp = avatarPhotoStamp,
+                    avatarCustomColor = draft.avatarCustomColor,
+                    avatarPhotoStamp = draft.avatarPhotoStamp,
                 )
             profilesFlow.value = profilesFlow.value + profile
             return CreateResult.Created(profile)
@@ -80,11 +75,7 @@ class ProfileTesterViewModelTest {
 
         override suspend fun completeSetup(
             id: Long,
-            name: String,
-            avatarColor: Int,
-            avatarEmoji: String?,
-            avatarCustomColor: Int?,
-            avatarPhotoStamp: Long?,
+            draft: ProfileDraft,
         ): UpdateResult = error("unused")
 
         override suspend fun setAvatarPhoto(

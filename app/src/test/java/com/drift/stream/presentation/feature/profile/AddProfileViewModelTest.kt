@@ -3,6 +3,7 @@ package com.drift.stream.presentation.feature.profile
 import androidx.lifecycle.SavedStateHandle
 import com.drift.stream.data.profile.AvatarPhotoStore
 import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.model.ProfileDraft
 import com.drift.stream.domain.repository.CreateResult
 import com.drift.stream.domain.repository.ProfileRepository
 import com.drift.stream.domain.usecase.NameResult
@@ -73,7 +74,7 @@ class AddProfileViewModelTest {
 
             val createdProfile = sampleProfile(2L, "Asha", 5).copy(avatarEmoji = "🦊")
             coEvery {
-                profileRepo.create("Asha", 5, "🦊")
+                profileRepo.create(ProfileDraft("Asha", 5, "🦊"))
             } returns CreateResult.Created(createdProfile)
 
             val savedStateHandle = SavedStateHandle()
@@ -98,7 +99,7 @@ class AddProfileViewModelTest {
             testScheduler.advanceUntilIdle()
 
             coVerify(exactly = 1) {
-                profileRepo.create("Asha", 5, "🦊")
+                profileRepo.create(ProfileDraft("Asha", 5, "🦊"))
             }
             assertEquals(AddProfileEffect.Done(2L), receivedDone)
 
@@ -122,7 +123,7 @@ class AddProfileViewModelTest {
             testScheduler.advanceUntilIdle()
 
             coVerify(exactly = 0) {
-                profileRepo.create(any(), any(), any())
+                profileRepo.create(any())
             }
             assertEquals(NameError.Duplicate, viewModel.uiState.value.nameError)
         }
@@ -136,7 +137,7 @@ class AddProfileViewModelTest {
             every { profileRepo.profiles } returns profilesFlow
 
             coEvery {
-                profileRepo.create(any(), any(), any())
+                profileRepo.create(any())
             } returns CreateResult.InvalidName(NameResult.Blank)
 
             val savedStateHandle = SavedStateHandle()
@@ -167,7 +168,7 @@ class AddProfileViewModelTest {
 
             val created = sampleProfile(2L, "Asha", 1)
             coEvery {
-                profileRepo.create("Asha", 1, null)
+                profileRepo.create(ProfileDraft("Asha", 1, null))
             } returns CreateResult.Created(created)
 
             val savedStateHandle = SavedStateHandle()
@@ -183,7 +184,7 @@ class AddProfileViewModelTest {
             testScheduler.advanceUntilIdle()
 
             coVerify(exactly = 1) {
-                profileRepo.create("Asha", 1, null)
+                profileRepo.create(ProfileDraft("Asha", 1, null))
             }
         }
 
@@ -198,7 +199,7 @@ class AddProfileViewModelTest {
 
             val created = sampleProfile(2L, "Bob", 3)
             coEvery {
-                profileRepo.create("Bob", 3, null, null, null)
+                profileRepo.create(ProfileDraft("Bob", 3, null, null, null))
             } returns CreateResult.Created(created)
 
             coEvery {
@@ -241,7 +242,7 @@ class AddProfileViewModelTest {
             testScheduler.advanceUntilIdle()
 
             coVerify(exactly = 1) {
-                profileRepo.create("Bob", 3, null, null, null)
+                profileRepo.create(ProfileDraft("Bob", 3, null, null, null))
             }
             coVerify(exactly = 1) {
                 photoStore.write(2L, any())

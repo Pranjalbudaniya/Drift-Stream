@@ -15,11 +15,28 @@ data class ProfileFormState(
     val emoji: String?,
     val customColor: Int? = null,
     val pendingPhotoPath: String? = null,
+    val existingPhotoStamp: Long? = null,
+    val existingPhotoProfileId: Long? = null,
     val nameError: NameError? = null,
     val saving: Boolean = false,
     val saveFailed: Boolean = false,
     val photoError: Boolean = false,
-)
+) {
+    val avatarKind: AvatarKind
+        get() =
+            when {
+                pendingPhotoPath != null -> AvatarKind.Photo
+                existingPhotoStamp != null && emoji == null -> AvatarKind.Photo
+                !emoji.isNullOrBlank() -> AvatarKind.Emoji
+                else -> AvatarKind.Initial
+            }
+}
+
+enum class AvatarKind {
+    Initial,
+    Emoji,
+    Photo,
+}
 
 sealed interface NameError {
     data object Empty : NameError
@@ -69,6 +86,14 @@ data class SubmitRequest(
     val emoji: String?,
     val customColor: Int? = null,
     val pendingPhotoPath: String? = null,
+    val existingPhotoStamp: Long? = null,
+    val avatarKind: AvatarKind =
+        when {
+            pendingPhotoPath != null -> AvatarKind.Photo
+            existingPhotoStamp != null && emoji == null -> AvatarKind.Photo
+            !emoji.isNullOrBlank() -> AvatarKind.Emoji
+            else -> AvatarKind.Initial
+        },
 )
 
 fun truncateToCodePoints(
@@ -103,6 +128,22 @@ fun defaultStateForAdd(existingProfiles: Collection<Profile>): ProfileFormState 
         customColor = null,
         pendingPhotoPath = null,
     )
+
+fun defaultStateForEdit(profile: Profile): ProfileFormState =
+    ProfileFormState(
+        name = profile.name,
+        colorIndex = profile.avatarColor,
+        emoji = profile.avatarEmoji,
+        customColor = profile.avatarCustomColor,
+        pendingPhotoPath = null,
+        existingPhotoStamp = profile.avatarPhotoStamp,
+        existingPhotoProfileId = if (profile.avatarPhotoStamp != null) profile.id else null,
+    )
+
+fun otherNamesForEdit(
+    profiles: Collection<Profile>,
+    editingId: Long,
+): List<String> = profiles.filter { it.id != editingId }.map { it.name }
 
 fun reduceProfileForm(
     state: ProfileFormState,
@@ -192,6 +233,8 @@ private fun reduceSubmit(
                     emoji = state.emoji,
                     customColor = state.customColor,
                     pendingPhotoPath = state.pendingPhotoPath,
+                    existingPhotoStamp = state.existingPhotoStamp,
+                    avatarKind = state.avatarKind,
                 ),
             )
         }

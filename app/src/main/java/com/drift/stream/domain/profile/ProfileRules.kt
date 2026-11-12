@@ -1,7 +1,20 @@
 package com.drift.stream.domain.profile
 
+import com.drift.stream.domain.model.Profile
+
 const val AVATAR_COLOR_COUNT = 12
 const val PROFILE_NAME_MAX_LENGTH = 20
+
+enum class DeleteHost {
+    Picker,
+    Settings,
+}
+
+fun canDeleteProfile(
+    profile: Profile,
+    activeProfileId: Long?,
+    host: DeleteHost,
+): Boolean = !profile.isOwner && (host == DeleteHost.Picker || profile.id != activeProfileId)
 
 sealed interface NameCheck {
     data class Valid(

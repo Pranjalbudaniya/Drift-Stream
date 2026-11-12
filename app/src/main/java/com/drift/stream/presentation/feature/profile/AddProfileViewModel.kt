@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.drift.stream.data.profile.AvatarPhotoPipeline
 import com.drift.stream.data.profile.AvatarPhotoStore
 import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.model.ProfileDraft
 import com.drift.stream.domain.profile.CropRect
 import com.drift.stream.domain.profile.CropState
 import com.drift.stream.domain.profile.cropRect
@@ -215,11 +216,13 @@ class AddProfileViewModel
             viewModelScope.launch {
                 val result =
                     profileRepository.create(
-                        name = request.name,
-                        avatarColor = request.colorIndex,
-                        avatarEmoji = request.emoji,
-                        avatarCustomColor = request.customColor,
-                        avatarPhotoStamp = null,
+                        ProfileDraft(
+                            name = request.name,
+                            avatarColor = request.colorIndex,
+                            avatarEmoji = request.emoji,
+                            avatarCustomColor = request.customColor,
+                            avatarPhotoStamp = null,
+                        ),
                     )
                 when (result) {
                     is CreateResult.Created -> {

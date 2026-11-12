@@ -6,6 +6,7 @@ import com.drift.stream.data.local.db.entity.ProfileEntity
 import com.drift.stream.data.player.PlayerTrace
 import com.drift.stream.di.IoDispatcher
 import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.model.ProfileDraft
 import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.CreateResult
 import com.drift.stream.domain.repository.DeleteResult
@@ -33,6 +34,8 @@ class ProfileRepositoryImpl
         private val profileDataStores: ProfileDataStores,
         private val downloadManager: Provider<DownloadManager>,
     ) : ProfileRepository {
+        @Inject
+        internal lateinit var avatarPhotoStore: AvatarPhotoStore
         private val profileDao = database.profileDao()
         private val addonDao = database.addonDao()
         private val profileAddonPrefsDao = database.profileAddonPrefsDao()
@@ -81,17 +84,11 @@ class ProfileRepositoryImpl
                 profileDao.getById(id)?.toDomain()
             }
 
-        override suspend fun create(
-            name: String,
-            avatarColor: Int,
-            avatarEmoji: String?,
-            avatarCustomColor: Int?,
-            avatarPhotoStamp: Long?,
-        ): CreateResult =
+        override suspend fun create(draft: ProfileDraft): CreateResult =
             withContext(ioDispatcher) {
                 val existing = profileDao.getAll()
                 val existingNames = existing.map { it.name }
-                when (val validation = ProfileNameRules.validate(name, existingNames)) {
+                when (val validation = ProfileNameRules.validate(draft.name, existingNames)) {
                     is NameResult.Valid -> {
                         val maxSortOrder = profileDao.maxSortOrder() ?: -1
                         val now = System.currentTimeMillis()
@@ -99,10 +96,10 @@ class ProfileRepositoryImpl
                             ProfileEntity(
                                 id = 0L,
                                 name = validation.trimmedName,
-                                avatarColor = avatarColor,
-                                avatarEmoji = avatarEmoji,
-                                avatarCustomColor = avatarCustomColor,
-                                avatarPhotoStamp = avatarPhotoStamp,
+                                avatarColor = draft.avatarColor,
+                                avatarEmoji = draft.avatarEmoji,
+                                avatarCustomColor = draft.avatarCustomColor,
+                                avatarPhotoStamp = draft.avatarPhotoStamp,
                                 isOwner = false,
                                 needsSetup = false,
                                 pinHash = null,
@@ -141,27 +138,22 @@ class ProfileRepositoryImpl
                 }
             }
 
-        @Suppress("LongParameterList")
         override suspend fun completeSetup(
             id: Long,
-            name: String,
-            avatarColor: Int,
-            avatarEmoji: String?,
-            avatarCustomColor: Int?,
-            avatarPhotoStamp: Long?,
+            draft: ProfileDraft,
         ): UpdateResult =
             withContext(ioDispatcher) {
                 val existing = profileDao.getById(id) ?: return@withContext UpdateResult.NotFound
                 val otherNames = profileDao.getAll().filter { it.id != id }.map { it.name }
-                when (val validation = ProfileNameRules.validate(name, otherNames)) {
+                when (val validation = ProfileNameRules.validate(draft.name, otherNames)) {
                     is NameResult.Valid -> {
                         val updated =
                             existing.copy(
                                 name = validation.trimmedName,
-                                avatarColor = avatarColor,
-                                avatarEmoji = avatarEmoji,
-                                avatarCustomColor = avatarCustomColor,
-                                avatarPhotoStamp = avatarPhotoStamp,
+                                avatarColor = draft.avatarColor,
+                                avatarEmoji = draft.avatarEmoji,
+                                avatarCustomColor = draft.avatarCustomColor,
+                                avatarPhotoStamp = draft.avatarPhotoStamp,
                                 needsSetup = false,
                             )
                         profileDao.update(updated)
@@ -210,6 +202,7 @@ class ProfileRepositoryImpl
                     PlayerTrace.log("profile.delete_error")
                     throw expected
                 }
+                avatarPhotoStore.delete(id)
                 DeleteResult.Deleted
             }
     }

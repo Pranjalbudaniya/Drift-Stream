@@ -144,7 +144,7 @@ fun ProfileForm(
             onSubmit = { onEvent(ProfileFormEvent.Submit) },
         )
 
-        if (state.pendingPhotoPath == null) {
+        if (state.avatarKind != AvatarKind.Photo) {
             Spacer(modifier = Modifier.height(NexusTheme.spacing.lg))
 
             Text(
@@ -195,7 +195,7 @@ fun ProfileForm(
     }
 
     if (isAvatarSheetOpen) {
-        val hasCustom = state.emoji != null || state.pendingPhotoPath != null
+        val hasCustom = state.emoji != null || state.avatarKind == AvatarKind.Photo
         AvatarEditorSheet(
             hasCustomAvatar = hasCustom,
             onPickEmoji = { onPickEmoji?.invoke() },
@@ -223,6 +223,24 @@ private fun AvatarPreviewWithBadge(
     onOpenAvatarEditor: () -> Unit,
 ) {
     val previewDesc = stringResource(R.string.avatar_preview_content_description)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val photoModel =
+        if (state.avatarKind == AvatarKind.Photo) {
+            state.pendingPhotoPath ?: state.existingPhotoProfileId?.let { id ->
+                java.io.File(context.filesDir, "avatars/$id.jpg")
+            }
+        } else {
+            null
+        }
+    val memoryCacheKey =
+        if (state.avatarKind == AvatarKind.Photo && state.pendingPhotoPath == null &&
+            state.existingPhotoProfileId != null
+        ) {
+            "avatar:${state.existingPhotoProfileId}:${state.existingPhotoStamp}"
+        } else {
+            null
+        }
+
     Box(
         modifier = Modifier.size(AvatarPreviewSize),
         contentAlignment = Alignment.Center,
@@ -233,7 +251,8 @@ private fun AvatarPreviewWithBadge(
             name = state.name,
             size = AvatarPreviewSize,
             customColor = state.customColor,
-            photoModel = state.pendingPhotoPath,
+            photoModel = photoModel,
+            memoryCacheKey = memoryCacheKey,
             modifier = Modifier.semantics { this.contentDescription = previewDesc },
         )
 

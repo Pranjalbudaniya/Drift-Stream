@@ -1,6 +1,7 @@
 package com.drift.stream.domain.repository
 
 import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.model.ProfileDraft
 import com.drift.stream.domain.usecase.NameResult
 import kotlinx.coroutines.flow.Flow
 
@@ -45,24 +46,13 @@ interface ProfileRepository {
 
     suspend fun get(id: Long): Profile?
 
-    suspend fun create(
-        name: String,
-        avatarColor: Int,
-        avatarEmoji: String?,
-        avatarCustomColor: Int? = null,
-        avatarPhotoStamp: Long? = null,
-    ): CreateResult
+    suspend fun create(draft: ProfileDraft): CreateResult
 
     suspend fun update(profile: Profile): UpdateResult
 
-    @Suppress("LongParameterList")
     suspend fun completeSetup(
         id: Long,
-        name: String,
-        avatarColor: Int,
-        avatarEmoji: String?,
-        avatarCustomColor: Int? = null,
-        avatarPhotoStamp: Long? = null,
+        draft: ProfileDraft,
     ): UpdateResult
 
     suspend fun setAvatarPhoto(

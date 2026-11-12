@@ -82,9 +82,9 @@ fun ProfileForm(
     actionButtonText: String = stringResource(R.string.profile_form_continue),
     navigationIcon: (@Composable () -> Unit)? = null,
     onPickPhoto: (() -> Unit)? = null,
+    onPickEmoji: (() -> Unit)? = null,
 ) {
     var isAvatarSheetOpen by rememberSaveable { mutableStateOf(false) }
-    var isEmojiSheetOpen by rememberSaveable { mutableStateOf(false) }
     var isColorSheetOpen by rememberSaveable { mutableStateOf(false) }
 
     Column(
@@ -198,17 +198,10 @@ fun ProfileForm(
         val hasCustom = state.emoji != null || state.pendingPhotoPath != null
         AvatarEditorSheet(
             hasCustomAvatar = hasCustom,
-            onPickEmoji = { isEmojiSheetOpen = true },
+            onPickEmoji = { onPickEmoji?.invoke() },
             onPickPhoto = onPickPhoto,
             onUseInitial = { onEvent(ProfileFormEvent.AvatarCleared) },
             onDismiss = { isAvatarSheetOpen = false },
-        )
-    }
-
-    if (isEmojiSheetOpen) {
-        EmojiPickerSheet(
-            onEmojiPicked = { onEvent(ProfileFormEvent.EmojiPicked(it)) },
-            onDismiss = { isEmojiSheetOpen = false },
         )
     }
 

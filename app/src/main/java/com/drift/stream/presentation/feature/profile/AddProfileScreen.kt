@@ -19,6 +19,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -39,6 +42,7 @@ fun AddProfileScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val croppingBitmap by viewModel.croppingBitmap.collectAsStateWithLifecycle()
+    var isEmojiPickerOpen by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
 
     val photoPickerLauncher =
@@ -71,15 +75,7 @@ fun AddProfileScreen(
         }
     }
 
-    val activeBitmap = croppingBitmap
-    if (activeBitmap != null) {
-        PhotoCropScreen(
-            bitmap = activeBitmap,
-            onDone = viewModel::onCropDone,
-            onCancel = viewModel::onCropCancel,
-            modifier = modifier,
-        )
-    } else {
+    Box(modifier = modifier.fillMaxSize()) {
         AddProfileContent(
             state = state,
             onEvent = viewModel::onEvent,
@@ -89,8 +85,29 @@ fun AddProfileScreen(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                 )
             },
-            modifier = modifier,
+            onPickEmoji = { isEmojiPickerOpen = true },
+            modifier = Modifier.fillMaxSize(),
         )
+
+        if (isEmojiPickerOpen) {
+            EmojiPickerScreen(
+                onEmojiPicked = { emoji ->
+                    viewModel.onEvent(ProfileFormEvent.EmojiPicked(emoji))
+                },
+                onDismiss = { isEmojiPickerOpen = false },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        val activeBitmap = croppingBitmap
+        if (activeBitmap != null) {
+            PhotoCropScreen(
+                bitmap = activeBitmap,
+                onDone = viewModel::onCropDone,
+                onCancel = viewModel::onCropCancel,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 
@@ -101,6 +118,7 @@ fun AddProfileContent(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onPickPhoto: (() -> Unit)? = null,
+    onPickEmoji: (() -> Unit)? = null,
 ) {
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -118,6 +136,7 @@ fun AddProfileContent(
                 subtitle = null,
                 actionButtonText = stringResource(R.string.add_profile_button),
                 onPickPhoto = onPickPhoto,
+                onPickEmoji = onPickEmoji,
                 navigationIcon = {
                     NexusIconButton(onClick = onBack) {
                         Icon(

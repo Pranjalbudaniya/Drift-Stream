@@ -984,8 +984,10 @@
     <string name="avatar_action_done">Done</string>
     <string name="avatar_action_cancel">Cancel</string>
     <string name="photo_crop_title">Move and zoom</string>
-    <string name="photo_crop_hint">Drag to move, pinch to zoom</string>
+    <string name="photo_crop_hint">Pinch to zoom, drag to move</string>
     <string name="photo_open_failed">Couldn\'t open this photo.</string>
     <string name="profile_add_photo_save_failed">Profile added, but the photo couldn\'t be saved.</string>
+    <string name="emoji_picker_title">Choose an emoji</string>
+    <string name="emoji_picker_close">Close</string>
 </resources>
 

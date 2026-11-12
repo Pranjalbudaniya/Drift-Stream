@@ -2,8 +2,11 @@ package com.drift.stream.presentation.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -11,6 +14,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.drift.stream.domain.profile.DeleteHost
+import com.drift.stream.domain.profile.canManageProfiles
 import com.drift.stream.domain.profile.tabsToClearOnSwitch
 import com.drift.stream.presentation.feature.addons.AddonManagerScreen
 import com.drift.stream.presentation.feature.detail.DetailScreen
@@ -23,6 +27,7 @@ import com.drift.stream.presentation.feature.player.PlayerScreen
 import com.drift.stream.presentation.feature.profile.AddProfileScreen
 import com.drift.stream.presentation.feature.profile.EditProfileScreen
 import com.drift.stream.presentation.feature.profile.ProfilesSettingsScreen
+import com.drift.stream.presentation.feature.profile.ProfilesSettingsViewModel
 import com.drift.stream.presentation.feature.settings.SettingsScreen
 import kotlinx.coroutines.flow.filter
 
@@ -110,9 +115,20 @@ fun NexusNavHost(
                 onNavigateUp = { navController.navigateUp() },
                 onNavigateToAddons = { navController.navigate(Addons()) },
                 onNavigateToProfiles = { navController.navigate(ProfilesList) },
+                onNavigateToEditProfile = { profileId ->
+                    navController.navigate(ProfileEdit(profileId = profileId))
+                },
             )
         }
         composable<ProfilesList> {
+            val viewModel: ProfilesSettingsViewModel = hiltViewModel()
+            val state by viewModel.uiState.collectAsStateWithLifecycle()
+            LaunchedEffect(state.activeProfile) {
+                val active = state.activeProfile
+                if (active != null && !canManageProfiles(active)) {
+                    navController.navigateUp()
+                }
+            }
             ProfilesSettingsScreen(
                 onNavigateUp = { navController.navigateUp() },
                 onProfileClick = { profileId ->
@@ -121,6 +137,7 @@ fun NexusNavHost(
                 onAddProfileClick = {
                     navController.navigate(ProfileAdd)
                 },
+                viewModel = viewModel,
             )
         }
         composable<ProfileEdit> { backStackEntry ->
@@ -134,6 +151,14 @@ fun NexusNavHost(
             )
         }
         composable<ProfileAdd> {
+            val viewModel: ProfilesSettingsViewModel = hiltViewModel()
+            val state by viewModel.uiState.collectAsStateWithLifecycle()
+            LaunchedEffect(state.activeProfile) {
+                val active = state.activeProfile
+                if (active != null && !canManageProfiles(active)) {
+                    navController.navigateUp()
+                }
+            }
             AddProfileScreen(
                 onBack = { navController.navigateUp() },
                 onDone = { navController.navigateUp() },

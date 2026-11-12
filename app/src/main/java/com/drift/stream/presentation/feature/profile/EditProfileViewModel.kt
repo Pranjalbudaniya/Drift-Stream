@@ -14,6 +14,7 @@ import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.profile.CropState
 import com.drift.stream.domain.profile.DeleteHost
 import com.drift.stream.domain.profile.canDeleteProfile
+import com.drift.stream.domain.profile.canEditProfile
 import com.drift.stream.domain.profile.cropRect
 import com.drift.stream.domain.repository.DeleteResult
 import com.drift.stream.domain.repository.ProfileRepository
@@ -153,6 +154,19 @@ class EditProfileViewModel
                     return@launch
                 }
                 val activeId = activeProfileHolder.activeProfileId.value
+                if (host == DeleteHost.Settings) {
+                    val activeProfile =
+                        if (activeId != null) {
+                            currentProfiles.find { it.id == activeId } ?: profileRepository.get(activeId)
+                        } else {
+                            null
+                        }
+                    if (!canEditProfile(profile, activeProfile)) {
+                        _effects.emit(EditProfileEffect.Close)
+                        _uiState.value = _uiState.value.copy(closeScreen = true)
+                        return@launch
+                    }
+                }
                 val canDelete = canDeleteProfile(profile, activeId, host)
                 _uiState.value =
                     _uiState.value.copy(

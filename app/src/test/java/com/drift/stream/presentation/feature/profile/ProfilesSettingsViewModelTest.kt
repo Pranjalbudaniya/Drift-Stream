@@ -2,7 +2,10 @@ package com.drift.stream.presentation.feature.profile
 
 import com.drift.stream.data.profile.ActiveProfileHolder
 import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.repository.AppStateRepository
 import com.drift.stream.domain.repository.ProfileRepository
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -28,15 +31,18 @@ class ProfilesSettingsViewModelTest {
 
     private val profileRepository = mockk<ProfileRepository>()
     private val activeProfileHolder = mockk<ActiveProfileHolder>()
+    private val appStateRepository = mockk<AppStateRepository>()
 
     private val profilesFlow = MutableStateFlow<List<Profile>>(emptyList())
     private val activeProfileIdFlow = MutableStateFlow<Long?>(null)
+    private val alwaysShowPickerFlow = MutableStateFlow(false)
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         every { profileRepository.profiles } returns profilesFlow
         every { activeProfileHolder.activeProfileId } returns activeProfileIdFlow
+        every { appStateRepository.alwaysShowPicker } returns alwaysShowPickerFlow
     }
 
     @After
@@ -69,7 +75,7 @@ class ProfilesSettingsViewModelTest {
             profilesFlow.value = listOf(owner, nonOwner)
             activeProfileIdFlow.value = 2L
 
-            val viewModel = ProfilesSettingsViewModel(profileRepository, activeProfileHolder)
+            val viewModel = ProfilesSettingsViewModel(profileRepository, activeProfileHolder, appStateRepository)
             val job = launch { viewModel.uiState.collect {} }
             testScheduler.advanceUntilIdle()
 
@@ -100,13 +106,66 @@ class ProfilesSettingsViewModelTest {
             profilesFlow.value = listOf(p2, p1, p3)
             activeProfileIdFlow.value = 1L
 
-            val viewModel = ProfilesSettingsViewModel(profileRepository, activeProfileHolder)
+            val viewModel = ProfilesSettingsViewModel(profileRepository, activeProfileHolder, appStateRepository)
             val job = launch { viewModel.uiState.collect {} }
             testScheduler.advanceUntilIdle()
 
             val state = viewModel.uiState.value
             val ids = state.profiles.map { it.profile.id }
             assertEquals(listOf(2L, 1L, 3L), ids)
+            job.cancel()
+        }
+
+    @Test
+    fun PL3_uiState_ownerActive_canManage() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", isOwner = true)
+            profilesFlow.value = listOf(owner)
+            activeProfileIdFlow.value = 1L
+
+            val viewModel = ProfilesSettingsViewModel(profileRepository, activeProfileHolder, appStateRepository)
+            val job = launch { viewModel.uiState.collect {} }
+            testScheduler.advanceUntilIdle()
+
+            assertTrue(viewModel.uiState.value.canManage)
+            job.cancel()
+        }
+
+    @Test
+    fun PL4_uiState_nonOwnerActive_cannotManage() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", isOwner = true)
+            val nonOwner = sampleProfile(2L, "Asha", isOwner = false)
+            profilesFlow.value = listOf(owner, nonOwner)
+            activeProfileIdFlow.value = 2L
+
+            val viewModel = ProfilesSettingsViewModel(profileRepository, activeProfileHolder, appStateRepository)
+            val job = launch { viewModel.uiState.collect {} }
+            testScheduler.advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.canManage)
+            job.cancel()
+        }
+
+    @Test
+    fun PL5_alwaysShowPicker_reflectsAppState_andToggles() =
+        testScope.runTest {
+            alwaysShowPickerFlow.value = false
+            coEvery { appStateRepository.setAlwaysShowPicker(any()) } coAnswers {
+                alwaysShowPickerFlow.value = firstArg()
+            }
+
+            val viewModel = ProfilesSettingsViewModel(profileRepository, activeProfileHolder, appStateRepository)
+            val job = launch { viewModel.uiState.collect {} }
+            testScheduler.advanceUntilIdle()
+
+            assertFalse(viewModel.uiState.value.alwaysShowPicker)
+
+            viewModel.onEvent(ProfilesSettingsEvent.SetAlwaysShowPicker(true))
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { appStateRepository.setAlwaysShowPicker(true) }
+            assertTrue(viewModel.uiState.value.alwaysShowPicker)
             job.cancel()
         }
 }

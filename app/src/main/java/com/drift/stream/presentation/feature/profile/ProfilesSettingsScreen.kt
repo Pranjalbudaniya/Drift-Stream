@@ -41,6 +41,7 @@ import com.drift.stream.presentation.common.NexusCard
 import com.drift.stream.presentation.common.NexusIconButton
 import com.drift.stream.presentation.common.ProfileAvatar
 import com.drift.stream.presentation.common.ProfileAvatarFor
+import com.drift.stream.presentation.feature.settings.SettingsSwitchRow
 import com.drift.stream.presentation.theme.NexusTheme
 
 private val PROFILE_ROW_AVATAR_SIZE = 40.dp
@@ -59,6 +60,7 @@ fun ProfilesSettingsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     ProfilesSettingsContent(
         uiState = uiState,
+        onEvent = viewModel::onEvent,
         onNavigateUp = onNavigateUp,
         onProfileClick = onProfileClick,
         onAddProfileClick = onAddProfileClick,
@@ -74,6 +76,7 @@ fun ProfilesSettingsContent(
     onProfileClick: (Long) -> Unit,
     onAddProfileClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onEvent: (ProfilesSettingsEvent) -> Unit = {},
 ) {
     val spacing = NexusTheme.spacing
 
@@ -106,6 +109,18 @@ fun ProfilesSettingsContent(
                     .padding(horizontal = spacing.md, vertical = spacing.sm),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
+            item(key = "always_show_picker") {
+                NexusCard(modifier = Modifier.fillMaxWidth()) {
+                    SettingsSwitchRow(
+                        title = stringResource(R.string.settings_always_show_picker),
+                        subtitle = stringResource(R.string.settings_always_show_picker_desc),
+                        checked = uiState.alwaysShowPicker,
+                        onCheckedChange = { onEvent(ProfilesSettingsEvent.SetAlwaysShowPicker(it)) },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.md, vertical = spacing.sm),
+                    )
+                }
+            }
+
             items(uiState.profiles, key = { it.profile.id }) { item ->
                 ProfileItemRow(
                     item = item,

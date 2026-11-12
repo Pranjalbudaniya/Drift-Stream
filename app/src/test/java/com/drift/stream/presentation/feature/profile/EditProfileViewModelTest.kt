@@ -26,6 +26,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -375,9 +376,11 @@ class EditProfileViewModelTest {
     @Test
     fun EV11_delete_refusedActive_showsMessage() =
         testScope.runTest {
+            val owner = sampleProfile(1L, "Me")
             val target = sampleProfile(2L, "Asha")
-            profilesFlow.value = listOf(target)
+            profilesFlow.value = listOf(owner, target)
             activeProfileIdFlow.value = 1L
+            coEvery { profileRepository.get(1L) } returns owner
             coEvery { profileRepository.get(2L) } returns target
             coEvery { profileRepository.delete(2L) } returns DeleteResult.RefusedActive
 
@@ -443,5 +446,76 @@ class EditProfileViewModelTest {
             testScheduler.advanceUntilIdle()
 
             coVerify(exactly = 1) { profileRepository.delete(2L) }
+        }
+
+    @Test
+    fun EV14_initialize_settingsHost_nonOwnerEditingOther_closes() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me")
+            val nonOwner = sampleProfile(2L, "Asha")
+            profilesFlow.value = listOf(owner, nonOwner)
+            activeProfileIdFlow.value = 2L
+            coEvery { profileRepository.get(1L) } returns owner
+            coEvery { profileRepository.get(2L) } returns nonOwner
+
+            val savedStateHandle = SavedStateHandle()
+            val viewModel =
+                EditProfileViewModel(
+                    profileRepository = profileRepository,
+                    activeProfileHolder = activeProfileHolder,
+                    avatarPhotoStore = avatarPhotoStore,
+                    avatarPhotoPipeline = avatarPhotoPipeline,
+                    savedStateHandle = savedStateHandle,
+                    clock = fixedClock,
+                )
+
+            val effects = mutableListOf<EditProfileEffect>()
+            val job = launch { viewModel.effects.collect { effects.add(it) } }
+
+            viewModel.initialize(1L, DeleteHost.Settings)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(listOf(EditProfileEffect.Close), effects)
+            assertNull(viewModel.uiState.value.profile)
+            job.cancel()
+        }
+
+    @Test
+    fun EV15_initialize_settingsHost_nonOwnerEditingSelf_loads() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me")
+            val nonOwner = sampleProfile(2L, "Asha")
+            profilesFlow.value = listOf(owner, nonOwner)
+            activeProfileIdFlow.value = 2L
+            coEvery { profileRepository.get(2L) } returns nonOwner
+
+            val viewModel = createViewModel(2L, host = DeleteHost.Settings)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(
+                2L,
+                viewModel.uiState.value.profile
+                    ?.id,
+            )
+            assertFalse(viewModel.uiState.value.canDelete)
+        }
+
+    @Test
+    fun EV16_initialize_pickerHost_skipsRoleCheck() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me")
+            val nonOwner = sampleProfile(2L, "Asha")
+            profilesFlow.value = listOf(owner, nonOwner)
+            activeProfileIdFlow.value = 2L
+            coEvery { profileRepository.get(1L) } returns owner
+
+            val viewModel = createViewModel(1L, host = DeleteHost.Picker)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(
+                1L,
+                viewModel.uiState.value.profile
+                    ?.id,
+            )
         }
 }

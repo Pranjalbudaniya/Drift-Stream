@@ -56,10 +56,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.drift.stream.R
 import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.model.ThemeSettings
+import com.drift.stream.domain.profile.SettingsProfileEntry
+import com.drift.stream.domain.profile.settingsProfileEntryTarget
 import com.drift.stream.domain.usecase.LanguageCodes
 import com.drift.stream.presentation.common.NexusCard
 import com.drift.stream.presentation.common.NexusIconButton
-import com.drift.stream.presentation.common.ProfileAvatar
 import com.drift.stream.presentation.common.ProfileAvatarFor
 import com.drift.stream.presentation.feature.profile.ProfilesSettingsViewModel
 import com.drift.stream.presentation.theme.NexusTheme
@@ -81,6 +82,7 @@ fun SettingsScreen(
     onNavigateToAddons: () -> Unit,
     modifier: Modifier = Modifier,
     onNavigateToProfiles: () -> Unit = {},
+    onNavigateToEditProfile: (Long) -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     appearanceViewModel: AppearanceViewModel = hiltViewModel(),
     homeRowsViewModel: HomeRowsSettingsViewModel = hiltViewModel(),
@@ -214,6 +216,7 @@ fun SettingsScreen(
         onNavigateUp = onNavigateUp,
         onNavigateToAddons = onNavigateToAddons,
         onNavigateToProfiles = onNavigateToProfiles,
+        onNavigateToEditProfile = onNavigateToEditProfile,
         activeProfile = profilesState.activeProfile,
         snackbarHostState = snackbarHostState,
         modifier = modifier,
@@ -243,6 +246,7 @@ internal fun SettingsContent(
     modifier: Modifier = Modifier,
     activeProfile: Profile? = null,
     onNavigateToProfiles: () -> Unit = {},
+    onNavigateToEditProfile: (Long) -> Unit = {},
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val spacing = NexusTheme.spacing
@@ -329,8 +333,9 @@ internal fun SettingsContent(
         ) {
             // Profile entry
             ProfileSettingsEntry(
-                profile = activeProfile,
-                onClick = onNavigateToProfiles,
+                activeProfile = activeProfile,
+                onNavigateToProfiles = onNavigateToProfiles,
+                onNavigateToEditProfile = onNavigateToEditProfile,
             )
 
             // 1. Appearance
@@ -541,10 +546,35 @@ internal fun SettingsContent(
 
 @Composable
 private fun ProfileSettingsEntry(
-    profile: Profile?,
-    onClick: () -> Unit,
+    activeProfile: Profile?,
+    onNavigateToProfiles: () -> Unit,
+    onNavigateToEditProfile: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val target = settingsProfileEntryTarget(activeProfile)
+    if (target == SettingsProfileEntry.None || activeProfile == null) return
+
+    val subtitle =
+        when (target) {
+            SettingsProfileEntry.ManageList -> stringResource(R.string.who_is_watching_manage_profiles)
+            SettingsProfileEntry.EditSelf -> stringResource(R.string.edit_profile_title)
+            SettingsProfileEntry.None -> ""
+        }
+    val onClick: () -> Unit =
+        when (target) {
+            SettingsProfileEntry.ManageList -> {
+                onNavigateToProfiles
+            }
+
+            SettingsProfileEntry.EditSelf -> {
+                { onNavigateToEditProfile(activeProfile.id) }
+            }
+
+            SettingsProfileEntry.None -> {
+                ({})
+            }
+        }
+
     val spacing = NexusTheme.spacing
 
     NexusCard(modifier = modifier.fillMaxWidth()) {
@@ -565,31 +595,22 @@ private fun ProfileSettingsEntry(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(spacing.md),
             ) {
-                if (profile != null) {
-                    ProfileAvatarFor(
-                        profile = profile,
-                        size = SETTINGS_PROFILE_AVATAR_SIZE,
-                    )
-                } else {
-                    ProfileAvatar(
-                        colorIndex = 0,
-                        emoji = null,
-                        name = "",
-                        size = SETTINGS_PROFILE_AVATAR_SIZE,
-                    )
-                }
+                ProfileAvatarFor(
+                    profile = activeProfile,
+                    size = SETTINGS_PROFILE_AVATAR_SIZE,
+                )
 
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = profile?.name.orEmpty(),
+                        text = activeProfile.name,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = stringResource(R.string.who_is_watching_manage_profiles),
+                        text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -761,8 +782,9 @@ private fun PlayerSectionCard(
 }
 
 @Preview(name = "SettingsScreen - Collapsed Light")
+@Preview(name = "SettingsScreen - Collapsed Dark", uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
-internal fun SettingsScreenCollapsedLightPreview() {
+internal fun SettingsScreenCollapsedPreview() {
     NexusTheme {
         SettingsContent(
             uiState =
@@ -772,39 +794,6 @@ internal fun SettingsScreenCollapsedLightPreview() {
                     preferredLanguage = "en",
                     preferredQuality = 1080,
                     hideCam = false,
-                ),
-            appearanceState = AppearanceUiState(settings = ThemeSettings()),
-            torrentState = TorrentSettingsUiState(),
-            aboutState = AboutUiState(versionSummary = "Version 1.0.0"),
-            updateState =
-                UpdateUi(
-                    status = StatusText(R.string.update_not_checked),
-                    bigButtons = listOf(UiButton(R.string.update_check, UpdateEvent.CheckNow, isPrimary = true)),
-                ),
-            onEvent = {},
-            onAppearanceEvent = {},
-            onTorrentEvent = {},
-            onAboutEvent = {},
-            onUpdateEvent = {},
-            onOpenUrl = {},
-            onNavigateUp = {},
-            onNavigateToAddons = {},
-        )
-    }
-}
-
-@Preview(name = "SettingsScreen - Collapsed Dark", uiMode = Configuration.UI_MODE_NIGHT_YES)
-@Composable
-internal fun SettingsScreenCollapsedDarkPreview() {
-    NexusTheme {
-        SettingsContent(
-            uiState =
-                SettingsUiState(
-                    familyMode = false,
-                    quickPlay = true,
-                    preferredLanguage = null,
-                    preferredQuality = null,
-                    hideCam = true,
                 ),
             appearanceState = AppearanceUiState(settings = ThemeSettings()),
             torrentState = TorrentSettingsUiState(),
@@ -874,5 +863,56 @@ internal fun SettingsScreenAboutExpandedPreview() {
             onUpdateEvent = {},
             onOpenUrl = {},
         )
+    }
+}
+
+@Preview(name = "ProfileSettingsEntry - Owner (Light)", showBackground = true)
+@Preview(
+    name = "ProfileSettingsEntry - Non-Owner (Dark)",
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+    showBackground = true,
+)
+@Composable
+internal fun ProfileSettingsEntryPreview() {
+    val owner =
+        Profile(
+            id = 1L,
+            name = "Me",
+            avatarColor = 0,
+            avatarEmoji = null,
+            isOwner = true,
+            needsSetup = false,
+            createdAt = 1000L,
+            lastUsedAt = 1000L,
+            sortOrder = 0,
+        )
+    val nonOwner =
+        Profile(
+            id = 2L,
+            name = "Asha",
+            avatarColor = 2,
+            avatarEmoji = null,
+            isOwner = false,
+            needsSetup = false,
+            createdAt = 1000L,
+            lastUsedAt = 1000L,
+            sortOrder = 1,
+        )
+    NexusTheme {
+        Column(
+            modifier = Modifier.padding(NexusTheme.spacing.md),
+            verticalArrangement = Arrangement.spacedBy(NexusTheme.spacing.sm),
+        ) {
+            ProfileSettingsEntry(
+                activeProfile = owner,
+                onNavigateToProfiles = {},
+                onNavigateToEditProfile = {},
+            )
+            ProfileSettingsEntry(
+                activeProfile = nonOwner,
+                onNavigateToProfiles = {},
+                onNavigateToEditProfile = {},
+            )
+        }
     }
 }

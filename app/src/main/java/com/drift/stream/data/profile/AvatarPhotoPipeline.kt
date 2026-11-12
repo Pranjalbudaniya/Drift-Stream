@@ -91,13 +91,6 @@ class AvatarPhotoPipelineImpl
                         scaled.compress(Bitmap.CompressFormat.JPEG, AVATAR_PHOTO_JPEG_QUALITY, out)
                     }
 
-                    if (scaled !== cropped && !cropped.isRecycled) {
-                        cropped.recycle()
-                    }
-                    if (scaled !== bitmap && !scaled.isRecycled) {
-                        scaled.recycle()
-                    }
-
                     pendingFile.absolutePath
                 } catch (_: IOException) {
                     null

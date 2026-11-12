@@ -4,11 +4,10 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -25,43 +25,52 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.drift.stream.R
 import com.drift.stream.domain.profile.CropBounds
+import com.drift.stream.domain.profile.CropGesture
 import com.drift.stream.domain.profile.CropState
 import com.drift.stream.domain.profile.applyGesture
-import com.drift.stream.domain.profile.clampOffset
-import com.drift.stream.domain.profile.clampScale
+import com.drift.stream.domain.profile.displayRect
 import com.drift.stream.domain.profile.initialCropState
-import com.drift.stream.domain.profile.minScale
+import com.drift.stream.domain.profile.rebaseCropState
 import com.drift.stream.presentation.common.NexusIconButton
 import com.drift.stream.presentation.theme.NexusTheme
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 private val TOP_BAR_HEIGHT = 56.dp
-private val CIRCLE_MARGIN = 32.dp
+private val CROP_WINDOW_MARGIN = 32.dp
 private val CIRCLE_STROKE_WIDTH = 2.dp
 private val HINT_BOTTOM_PADDING = 32.dp
-private const val DIM_ALPHA = 0.65f
-private const val OUTLINE_ALPHA = 0.8f
 private const val MIN_WINDOW_SIZE = 100
+private const val DIM_ALPHA = 0.75f
+private const val OUTLINE_ALPHA = 0.85f
 
 @Composable
 fun PhotoCropScreen(
@@ -72,143 +81,140 @@ fun PhotoCropScreen(
 ) {
     BackHandler(onBack = onCancel)
 
-    BoxWithConstraints(
+    val density = LocalDensity.current
+    val marginPx = remember(density) { with(density) { CROP_WINDOW_MARGIN.roundToPx() } }
+
+    var areaSize by remember { mutableStateOf(IntSize.Zero) }
+    var isDoneClicked by rememberSaveable { mutableStateOf(false) }
+
+    val bounds =
+        remember(bitmap.width, bitmap.height, areaSize, marginPx) {
+            computeCropBounds(bitmap.width, bitmap.height, areaSize, marginPx)
+        }
+
+    var savedScale by rememberSaveable { mutableFloatStateOf(0f) }
+    var savedOffsetX by rememberSaveable { mutableFloatStateOf(0f) }
+    var savedOffsetY by rememberSaveable { mutableFloatStateOf(0f) }
+    var previousBounds by remember { mutableStateOf<CropBounds?>(null) }
+
+    if (bounds != null) {
+        val resolved = resolveCropState(bounds, previousBounds, CropState(savedScale, savedOffsetX, savedOffsetY))
+        savedScale = resolved.scale
+        savedOffsetX = resolved.offsetX
+        savedOffsetY = resolved.offsetY
+        previousBounds = bounds
+    }
+
+    val cropState = CropState(savedScale, savedOffsetX, savedOffsetY)
+    val currentCropState by rememberUpdatedState(cropState)
+
+    val image = remember(bitmap) { bitmap.asImageBitmap() }
+    val dimColor = MaterialTheme.colorScheme.scrim.copy(alpha = DIM_ALPHA)
+    val outlineColor = MaterialTheme.colorScheme.surface.copy(alpha = OUTLINE_ALPHA)
+
+    val isDoneEnabled = bounds != null && !isDoneClicked
+
+    Column(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(Color.Black),
+                .background(MaterialTheme.colorScheme.background),
     ) {
-        val density = LocalDensity.current
-        val windowSizePx =
-            remember(maxWidth, maxHeight, density) {
-                with(density) {
-                    val shortestSide = minOf(maxWidth, maxHeight) - CIRCLE_MARGIN * 2
-                    shortestSide.roundToPx().coerceAtLeast(MIN_WINDOW_SIZE)
+        CropTopBar(
+            onCancel = onCancel,
+            onDone = {
+                val currentBounds = bounds
+                if (!isDoneClicked && currentBounds != null) {
+                    isDoneClicked = true
+                    onDone(cropState, currentBounds.window)
                 }
-            }
+            },
+            isDoneEnabled = isDoneEnabled,
+        )
 
-        val bounds =
-            remember(bitmap.width, bitmap.height, windowSizePx) {
-                CropBounds(
-                    imgW = bitmap.width,
-                    imgH = bitmap.height,
-                    window = windowSizePx,
-                )
-            }
-
-        val initial = remember(bounds) { initialCropState(bounds.imgW, bounds.imgH, bounds.window) }
-
-        var scale by rememberSaveable { mutableFloatStateOf(0f) }
-        var offsetX by rememberSaveable { mutableFloatStateOf(0f) }
-        var offsetY by rememberSaveable { mutableFloatStateOf(0f) }
-
-        val currentState =
-            remember(scale, offsetX, offsetY, bounds) {
-                if (scale <= 0f) {
-                    scale = initial.scale
-                    offsetX = initial.offsetX
-                    offsetY = initial.offsetY
-                    initial
-                } else {
-                    val min = minScale(bounds.imgW, bounds.imgH, bounds.window)
-                    val clampedScale = clampScale(scale, min)
-                    clampOffset(
-                        CropState(clampedScale, offsetX, offsetY),
-                        imgW = bounds.imgW,
-                        imgH = bounds.imgH,
-                        window = bounds.window,
-                    )
-                }
-            }
-
-        val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
-
-        // Gestures and image rendering
         Box(
             modifier =
                 Modifier
-                    .fillMaxSize()
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .onSizeChanged { areaSize = it }
                     .pointerInput(bounds) {
-                        detectTransformGestures { _, pan, zoom, _ ->
-                            val updated =
-                                applyGesture(
-                                    state = currentState,
-                                    gesture =
-                                        com.drift.stream.domain.profile.CropGesture(
-                                            zoom = zoom,
-                                            panX = pan.x,
-                                            panY = pan.y,
-                                        ),
-                                    bounds = bounds,
-                                )
-                            scale = updated.scale
-                            offsetX = updated.offsetX
-                            offsetY = updated.offsetY
+                        if (bounds != null) {
+                            detectTransformGestures(panZoomLock = false) { centroid, pan, zoom, _ ->
+                                val areaCentre = Offset(size.width / 2f, size.height / 2f)
+                                val focus = centroid - areaCentre
+                                val next =
+                                    applyGesture(
+                                        state = currentCropState,
+                                        gesture =
+                                            CropGesture(
+                                                zoom = zoom,
+                                                panX = pan.x,
+                                                panY = pan.y,
+                                                focusX = focus.x,
+                                                focusY = focus.y,
+                                            ),
+                                        bounds = bounds,
+                                    )
+                                savedScale = next.scale
+                                savedOffsetX = next.offsetX
+                                savedOffsetY = next.offsetY
+                            }
                         }
                     },
-            contentAlignment = Alignment.Center,
         ) {
-            Image(
-                bitmap = imageBitmap,
-                contentDescription = null,
-                modifier =
-                    Modifier.graphicsLayer {
-                        scaleX = currentState.scale
-                        scaleY = currentState.scale
-                        translationX = currentState.offsetX
-                        translationY = currentState.offsetY
-                    },
-            )
-
-            // Dim overlay with circular crop hole
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val radius = windowSizePx.toFloat() / 2f
-                val layerPaint = Paint()
-                drawContext.canvas.saveLayer(Rect(Offset.Zero, size), layerPaint)
-                drawRect(color = Color.Black.copy(alpha = DIM_ALPHA))
-                drawCircle(
-                    color = Color.Transparent,
-                    radius = radius,
-                    center = center,
-                    blendMode = BlendMode.Clear,
-                )
-                drawContext.canvas.restore()
-
-                drawCircle(
-                    color = Color.White.copy(alpha = OUTLINE_ALPHA),
-                    radius = radius,
-                    center = center,
-                    style = Stroke(width = CIRCLE_STROKE_WIDTH.toPx()),
-                )
+                if (bounds != null) {
+                    drawCropContent(image, bounds, cropState, dimColor, outlineColor)
+                }
             }
+
+            Text(
+                text = stringResource(R.string.photo_crop_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = HINT_BOTTOM_PADDING)
+                        .fillMaxWidth(),
+            )
         }
-
-        // Top bar
-        CropTopBar(
-            onCancel = onCancel,
-            onDone = { onDone(currentState, windowSizePx) },
-            modifier = Modifier.align(Alignment.TopCenter),
-        )
-
-        // Bottom hint
-        Text(
-            text = stringResource(R.string.photo_crop_hint),
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White,
-            textAlign = TextAlign.Center,
-            modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = HINT_BOTTOM_PADDING)
-                    .fillMaxWidth(),
-        )
     }
 }
+
+private fun computeCropBounds(
+    imgW: Int,
+    imgH: Int,
+    areaSize: IntSize,
+    marginPx: Int,
+): CropBounds? {
+    val hasValidSize = areaSize.width > 0 && areaSize.height > 0
+    val hasValidImage = imgW > 0 && imgH > 0
+    if (!hasValidSize || !hasValidImage) {
+        return null
+    }
+    val window = (min(areaSize.width, areaSize.height) - 2 * marginPx).coerceAtLeast(MIN_WINDOW_SIZE)
+    return CropBounds(imgW = imgW, imgH = imgH, window = window)
+}
+
+private fun resolveCropState(
+    bounds: CropBounds,
+    previousBounds: CropBounds?,
+    current: CropState,
+): CropState =
+    when {
+        current.scale <= 0f -> initialCropState(bounds.imgW, bounds.imgH, bounds.window)
+        previousBounds != null && previousBounds != bounds -> rebaseCropState(current, previousBounds, bounds)
+        else -> current
+    }
 
 @Composable
 private fun CropTopBar(
     onCancel: () -> Unit,
     onDone: () -> Unit,
+    isDoneEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -224,28 +230,77 @@ private fun CropTopBar(
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = stringResource(R.string.avatar_action_cancel),
-                tint = Color.White,
+                tint = MaterialTheme.colorScheme.onSurface,
             )
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.width(NexusTheme.spacing.sm))
 
         Text(
             text = stringResource(R.string.photo_crop_title),
             style = MaterialTheme.typography.titleMedium,
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
         )
 
         Spacer(modifier = Modifier.weight(1f))
 
-        NexusIconButton(onClick = onDone) {
+        NexusIconButton(
+            onClick = onDone,
+            enabled = isDoneEnabled,
+        ) {
             Icon(
                 imageVector = Icons.Default.Check,
                 contentDescription = stringResource(R.string.avatar_action_done),
-                tint = Color.White,
+                tint =
+                    if (isDoneEnabled) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    },
             )
         }
     }
+}
+
+private fun DrawScope.drawCropContent(
+    image: ImageBitmap,
+    bounds: CropBounds,
+    cropState: CropState,
+    dimColor: Color,
+    outlineColor: Color,
+) {
+    if (cropState.scale <= 0f) return
+    val rect = displayRect(cropState, bounds.imgW, bounds.imgH)
+    val centreX = size.width / 2f
+    val centreY = size.height / 2f
+
+    val dstLeft = (centreX + rect.left).roundToInt()
+    val dstTop = (centreY + rect.top).roundToInt()
+    val dstWidth = rect.width.roundToInt()
+    val dstHeight = rect.height.roundToInt()
+
+    drawImage(
+        image = image,
+        dstOffset = IntOffset(dstLeft, dstTop),
+        dstSize = IntSize(dstWidth, dstHeight),
+    )
+
+    val radius = bounds.window.toFloat() / 2f
+    val circlePath =
+        Path().apply {
+            addOval(Rect(center = Offset(centreX, centreY), radius = radius))
+        }
+
+    clipPath(circlePath, clipOp = ClipOp.Difference) {
+        drawRect(color = dimColor)
+    }
+
+    drawCircle(
+        color = outlineColor,
+        radius = radius,
+        center = Offset(centreX, centreY),
+        style = Stroke(width = CIRCLE_STROKE_WIDTH.toPx()),
+    )
 }
 
 @Preview(name = "Crop Screen - Dark", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)

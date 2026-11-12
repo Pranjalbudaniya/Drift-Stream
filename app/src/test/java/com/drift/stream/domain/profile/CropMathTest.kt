@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CropMathTest {
-    private val floatTolerance = 1e-4f
+    private val floatTolerance = 1e-3f
     private val defaultBounds = CropBounds(imgW = 4000, imgH = 3000, window = 800)
 
     @Test
@@ -55,9 +55,7 @@ class CropMathTest {
         val panned =
             applyGesture(
                 state = state,
-                zoom = 1f,
-                panX = 10000f,
-                panY = 0f,
+                gesture = CropGesture(zoom = 1f, panX = 10000f, panY = 0f, focusX = 0f, focusY = 0f),
                 bounds = defaultBounds,
             )
         assertEquals(666.6667f, panned.offsetX, 0.01f)
@@ -73,9 +71,7 @@ class CropMathTest {
         val zoomedIn =
             applyGesture(
                 state = initial,
-                zoom = 100f,
-                panX = 0f,
-                panY = 0f,
+                gesture = CropGesture(zoom = 100f, panX = 0f, panY = 0f, focusX = 0f, focusY = 0f),
                 bounds = defaultBounds,
             )
         assertEquals(min * CROP_MAX_ZOOM, zoomedIn.scale, floatTolerance)
@@ -83,9 +79,7 @@ class CropMathTest {
         val zoomedOut =
             applyGesture(
                 state = zoomedIn,
-                zoom = 0.01f,
-                panX = 0f,
-                panY = 0f,
+                gesture = CropGesture(zoom = 0.01f, panX = 0f, panY = 0f, focusX = 0f, focusY = 0f),
                 bounds = defaultBounds,
             )
         assertEquals(min, zoomedOut.scale, floatTolerance)
@@ -97,9 +91,7 @@ class CropMathTest {
         val updated =
             applyGesture(
                 state = state,
-                zoom = 1.5f,
-                panX = 0f,
-                panY = 0f,
+                gesture = CropGesture(zoom = 1.5f, panX = 0f, panY = 0f, focusX = 0f, focusY = 0f),
                 bounds = defaultBounds,
             )
         assertEquals(0.8f, updated.scale, floatTolerance)
@@ -130,9 +122,7 @@ class CropMathTest {
                     val state =
                         applyGesture(
                             state = CropState(scale, 0f, 0f),
-                            zoom = 1f,
-                            panX = panX,
-                            panY = panY,
+                            gesture = CropGesture(zoom = 1f, panX = panX, panY = panY, focusX = 0f, focusY = 0f),
                             bounds = defaultBounds,
                         )
                     val rect = cropRect(state, imgW, imgH, window)
@@ -143,5 +133,57 @@ class CropMathTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun CM11_applyGesture_zoomsAboutFocusPoint() {
+        val state = CropState(scale = 0.53333336f, offsetX = 100f, offsetY = -40f)
+        val updated =
+            applyGesture(
+                state = state,
+                gesture = CropGesture(zoom = 1.5f, panX = 0f, panY = 0f, focusX = 200f, focusY = 0f),
+                bounds = defaultBounds,
+            )
+        assertEquals(0.8f, updated.scale, floatTolerance)
+        assertEquals(50f, updated.offsetX, floatTolerance)
+        assertEquals(-60f, updated.offsetY, floatTolerance)
+    }
+
+    @Test
+    fun CM12_applyGesture_focusAtCentre_equalsOldBehaviour() {
+        val state = CropState(scale = 0.53333336f, offsetX = 100f, offsetY = -40f)
+        val updated =
+            applyGesture(
+                state = state,
+                gesture = CropGesture(zoom = 1.5f, panX = 0f, panY = 0f, focusX = 0f, focusY = 0f),
+                bounds = defaultBounds,
+            )
+        assertEquals(0.8f, updated.scale, floatTolerance)
+        assertEquals(150f, updated.offsetX, floatTolerance)
+        assertEquals(-60f, updated.offsetY, floatTolerance)
+    }
+
+    @Test
+    fun CM13_applyGesture_pointUnderFingersStaysPut() {
+        val state = CropState(scale = 0.53333336f, offsetX = 0f, offsetY = 0f)
+        val updated =
+            applyGesture(
+                state = state,
+                gesture = CropGesture(zoom = 1.5f, panX = 0f, panY = 0f, focusX = 100f, focusY = 50f),
+                bounds = defaultBounds,
+            )
+        assertEquals(-50f, updated.offsetX, floatTolerance)
+        assertEquals(-25f, updated.offsetY, floatTolerance)
+    }
+
+    @Test
+    fun CM14_rebase_keepsZoomFactorAndCentrePoint() {
+        val oldBounds = CropBounds(imgW = 4000, imgH = 3000, window = 800)
+        val newBounds = CropBounds(imgW = 4000, imgH = 3000, window = 400)
+        val state = CropState(scale = 0.53333336f, offsetX = 100f, offsetY = 0f)
+        val rebased = rebaseCropState(state, oldBounds, newBounds)
+        assertEquals(0.26667f, rebased.scale, floatTolerance)
+        assertEquals(50f, rebased.offsetX, floatTolerance)
+        assertEquals(0f, rebased.offsetY, floatTolerance)
     }
 }

@@ -133,9 +133,12 @@ fun PhotoCropScreen(
                             val updated =
                                 applyGesture(
                                     state = currentState,
-                                    zoom = zoom,
-                                    panX = pan.x,
-                                    panY = pan.y,
+                                    gesture =
+                                        com.drift.stream.domain.profile.CropGesture(
+                                            zoom = zoom,
+                                            panX = pan.x,
+                                            panY = pan.y,
+                                        ),
                                     bounds = bounds,
                                 )
                             scale = updated.scale

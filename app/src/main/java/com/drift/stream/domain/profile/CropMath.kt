@@ -26,6 +26,21 @@ data class CropBounds(
     val window: Int,
 )
 
+data class CropGesture(
+    val zoom: Float,
+    val panX: Float = 0f,
+    val panY: Float = 0f,
+    val focusX: Float = 0f,
+    val focusY: Float = 0f,
+)
+
+data class DisplayRect(
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+)
+
 fun minScale(
     imgW: Int,
     imgH: Int,
@@ -64,21 +79,52 @@ fun clampOffset(
 
 fun applyGesture(
     state: CropState,
-    zoom: Float,
-    panX: Float,
-    panY: Float,
+    gesture: CropGesture,
     bounds: CropBounds,
 ): CropState {
     val min = minScale(bounds.imgW, bounds.imgH, bounds.window)
-    val newScale = clampScale(state.scale * zoom, min)
+    val newScale = clampScale(state.scale * gesture.zoom, min)
     val ratio = newScale / state.scale
-    val newOffsetX = state.offsetX * ratio + panX
-    val newOffsetY = state.offsetY * ratio + panY
+    val newOffsetX = gesture.focusX * (1f - ratio) + state.offsetX * ratio + gesture.panX
+    val newOffsetY = gesture.focusY * (1f - ratio) + state.offsetY * ratio + gesture.panY
     return clampOffset(
         CropState(newScale, newOffsetX, newOffsetY),
         imgW = bounds.imgW,
         imgH = bounds.imgH,
         window = bounds.window,
+    )
+}
+
+fun displayRect(
+    state: CropState,
+    imgW: Int,
+    imgH: Int,
+): DisplayRect {
+    val width = imgW.toFloat() * state.scale
+    val height = imgH.toFloat() * state.scale
+    val left = state.offsetX - width / 2f
+    val top = state.offsetY - height / 2f
+    return DisplayRect(left = left, top = top, width = width, height = height)
+}
+
+fun rebaseCropState(
+    old: CropState,
+    oldBounds: CropBounds,
+    newBounds: CropBounds,
+): CropState {
+    val oldMin = minScale(oldBounds.imgW, oldBounds.imgH, oldBounds.window)
+    val newMin = minScale(newBounds.imgW, newBounds.imgH, newBounds.window)
+    val zoomFactor = old.scale / oldMin
+    val newScale = clampScale(newMin * zoomFactor, newMin)
+    val cx = oldBounds.imgW.toFloat() / 2f - old.offsetX / old.scale
+    val cy = oldBounds.imgH.toFloat() / 2f - old.offsetY / old.scale
+    val newOffsetX = (newBounds.imgW.toFloat() / 2f - cx) * newScale
+    val newOffsetY = (newBounds.imgH.toFloat() / 2f - cy) * newScale
+    return clampOffset(
+        CropState(newScale, newOffsetX, newOffsetY),
+        imgW = newBounds.imgW,
+        imgH = newBounds.imgH,
+        window = newBounds.window,
     )
 }
 

@@ -5,9 +5,13 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
@@ -33,26 +37,34 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.drift.stream.R
+import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.model.ThemeSettings
 import com.drift.stream.domain.usecase.LanguageCodes
+import com.drift.stream.presentation.common.NexusCard
 import com.drift.stream.presentation.common.NexusIconButton
+import com.drift.stream.presentation.common.ProfileAvatar
+import com.drift.stream.presentation.feature.profile.ProfilesSettingsViewModel
 import com.drift.stream.presentation.theme.NexusTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 import kotlin.math.roundToInt
 
 private const val RES_4K = 2160
@@ -60,12 +72,15 @@ private const val RES_1080P = 1080
 private const val RES_720P = 720
 private const val RES_SD = 480
 private const val SCROLL_MEASURE_DELAY_MS = 250L
+private val SETTINGS_PROFILE_AVATAR_SIZE = 40.dp
+private val SETTINGS_PROFILE_ROW_MIN_HEIGHT = 56.dp
 
 @Composable
 fun SettingsScreen(
     onNavigateUp: () -> Unit,
     onNavigateToAddons: () -> Unit,
     modifier: Modifier = Modifier,
+    onNavigateToProfiles: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     appearanceViewModel: AppearanceViewModel = hiltViewModel(),
     homeRowsViewModel: HomeRowsSettingsViewModel = hiltViewModel(),
@@ -73,6 +88,7 @@ fun SettingsScreen(
     downloadsViewModel: DownloadsSettingsViewModel = hiltViewModel(),
     aboutViewModel: AboutViewModel = hiltViewModel(),
     updateViewModel: UpdateViewModel = hiltViewModel(),
+    profilesViewModel: ProfilesSettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val appearanceState by appearanceViewModel.uiState.collectAsStateWithLifecycle()
@@ -81,6 +97,7 @@ fun SettingsScreen(
     val downloadsState by downloadsViewModel.uiState.collectAsStateWithLifecycle()
     val aboutState by aboutViewModel.uiState.collectAsStateWithLifecycle()
     val updateState by updateViewModel.uiState.collectAsStateWithLifecycle()
+    val profilesState by profilesViewModel.uiState.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -196,6 +213,8 @@ fun SettingsScreen(
         onOpenUrl = onOpenUrl,
         onNavigateUp = onNavigateUp,
         onNavigateToAddons = onNavigateToAddons,
+        onNavigateToProfiles = onNavigateToProfiles,
+        activeProfile = profilesState.activeProfile,
         snackbarHostState = snackbarHostState,
         modifier = modifier,
     )
@@ -222,6 +241,8 @@ internal fun SettingsContent(
     onNavigateUp: () -> Unit,
     onNavigateToAddons: () -> Unit,
     modifier: Modifier = Modifier,
+    activeProfile: Profile? = null,
+    onNavigateToProfiles: () -> Unit = {},
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
 ) {
     val spacing = NexusTheme.spacing
@@ -306,6 +327,12 @@ internal fun SettingsContent(
                     .padding(horizontal = spacing.md, vertical = spacing.sm),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
+            // Profile entry
+            ProfileSettingsEntry(
+                profile = activeProfile,
+                onClick = onNavigateToProfiles,
+            )
+
             // 1. Appearance
             val isAppearanceExpanded = SettingsSection.APPEARANCE in expandedSections
             val appearanceRequester = bringIntoViewRequesters.getValue(SettingsSection.APPEARANCE)
@@ -507,6 +534,90 @@ internal fun SettingsContent(
         if (updateState.showPermissionDialog) {
             InstallPermissionDialog(
                 onEvent = onUpdateEvent,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileSettingsEntry(
+    profile: Profile?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val spacing = NexusTheme.spacing
+
+    val photoFile =
+        remember(profile?.id, profile?.avatarPhotoStamp) {
+            val id = profile?.id
+            val stamp = profile?.avatarPhotoStamp
+            if (id != null && stamp != null) {
+                File(context.filesDir, "avatars/$id.jpg")
+            } else {
+                null
+            }
+        }
+    val memoryCacheKey =
+        remember(profile?.id, profile?.avatarPhotoStamp) {
+            val id = profile?.id
+            val stamp = profile?.avatarPhotoStamp
+            if (id != null && stamp != null) {
+                "avatar:$id:$stamp"
+            } else {
+                null
+            }
+        }
+
+    NexusCard(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = SETTINGS_PROFILE_ROW_MIN_HEIGHT)
+                    .clickable(
+                        role = Role.Button,
+                        onClick = onClick,
+                    ).padding(horizontal = spacing.md, vertical = spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            ) {
+                ProfileAvatar(
+                    colorIndex = profile?.avatarColor ?: 0,
+                    emoji = profile?.avatarEmoji,
+                    name = profile?.name.orEmpty(),
+                    size = SETTINGS_PROFILE_AVATAR_SIZE,
+                    customColor = profile?.avatarCustomColor,
+                    photoModel = photoFile,
+                    memoryCacheKey = memoryCacheKey,
+                )
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        text = profile?.name.orEmpty(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = stringResource(R.string.who_is_watching_manage_profiles),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

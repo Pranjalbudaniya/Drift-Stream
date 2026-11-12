@@ -31,3 +31,14 @@ data class Detail(
 
 @Serializable
 data object Player
+
+@Serializable
+data object ProfilesList
+
+@Serializable
+data class ProfileEdit(
+    val profileId: Long,
+)
+
+@Serializable
+data object ProfileAdd

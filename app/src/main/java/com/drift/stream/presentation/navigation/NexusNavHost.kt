@@ -10,6 +10,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import com.drift.stream.domain.profile.DeleteHost
 import com.drift.stream.presentation.feature.addons.AddonManagerScreen
 import com.drift.stream.presentation.feature.detail.DetailScreen
 import com.drift.stream.presentation.feature.discover.DiscoverScreen
@@ -18,6 +19,9 @@ import com.drift.stream.presentation.feature.home.HomeScreen
 import com.drift.stream.presentation.feature.library.LibraryScreen
 import com.drift.stream.presentation.feature.player.PlaybackSessionHolder
 import com.drift.stream.presentation.feature.player.PlayerScreen
+import com.drift.stream.presentation.feature.profile.AddProfileScreen
+import com.drift.stream.presentation.feature.profile.EditProfileScreen
+import com.drift.stream.presentation.feature.profile.ProfilesSettingsScreen
 import com.drift.stream.presentation.feature.settings.SettingsScreen
 import kotlinx.coroutines.flow.filter
 
@@ -98,6 +102,34 @@ fun NexusNavHost(
             SettingsScreen(
                 onNavigateUp = { navController.navigateUp() },
                 onNavigateToAddons = { navController.navigate(Addons()) },
+                onNavigateToProfiles = { navController.navigate(ProfilesList) },
+            )
+        }
+        composable<ProfilesList> {
+            ProfilesSettingsScreen(
+                onNavigateUp = { navController.navigateUp() },
+                onProfileClick = { profileId ->
+                    navController.navigate(ProfileEdit(profileId = profileId))
+                },
+                onAddProfileClick = {
+                    navController.navigate(ProfileAdd)
+                },
+            )
+        }
+        composable<ProfileEdit> { backStackEntry ->
+            val args = backStackEntry.toRoute<ProfileEdit>()
+            EditProfileScreen(
+                profileId = args.profileId,
+                host = DeleteHost.Settings,
+                onBack = { navController.navigateUp() },
+                onDone = { navController.navigateUp() },
+                onDelete = { navController.navigateUp() },
+            )
+        }
+        composable<ProfileAdd> {
+            AddProfileScreen(
+                onBack = { navController.navigateUp() },
+                onDone = { navController.navigateUp() },
             )
         }
         composable<Addons> { backStackEntry ->

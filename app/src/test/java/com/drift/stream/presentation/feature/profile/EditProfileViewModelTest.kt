@@ -397,7 +397,10 @@ class EditProfileViewModelTest {
             viewModel.onEvent(EditProfileEvent.DeleteConfirmed)
             testScheduler.advanceUntilIdle()
 
-            assertEquals("Switch to another profile first.", viewModel.uiState.value.deleteErrorMessage)
+            assertEquals(
+                com.drift.stream.R.string.profile_delete_refused_active,
+                viewModel.uiState.value.deleteErrorRes,
+            )
             assertFalse(closedOrDeleted)
             job.cancel()
         }

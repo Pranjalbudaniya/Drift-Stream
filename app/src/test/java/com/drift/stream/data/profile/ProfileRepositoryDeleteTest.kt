@@ -46,11 +46,9 @@ class ProfileRepositoryDeleteTest {
                 },
             ioDispatcher = UnconfinedTestDispatcher(testScheduler),
             activeProfileProvider = activeProfileProvider,
-            profileDataStores = mockk(relaxed = true),
+            profileFilesCleaner = ProfileFilesCleaner(mockk(relaxed = true), avatarPhotoStore),
             downloadManager = { mockk(relaxed = true) },
-        ).apply {
-            this.avatarPhotoStore = avatarPhotoStore
-        }
+        )
 
     private fun sampleEntity(
         id: Long,

@@ -92,10 +92,10 @@ fun EditProfileScreen(
         }
     }
 
-    LaunchedEffect(state.deleteErrorMessage, state.deleteErrorRes) {
-        val message = state.deleteErrorRes?.let { context.getString(it) } ?: state.deleteErrorMessage
-        if (message != null) {
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    LaunchedEffect(state.deleteErrorRes) {
+        val res = state.deleteErrorRes
+        if (res != null) {
+            Toast.makeText(context, context.getString(res), Toast.LENGTH_SHORT).show()
             viewModel.onEvent(EditProfileEvent.DeleteErrorDismissed)
         }
     }

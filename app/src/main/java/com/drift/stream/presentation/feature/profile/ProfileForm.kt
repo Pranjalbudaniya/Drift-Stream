@@ -51,6 +51,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.drift.stream.R
+import com.drift.stream.data.profile.avatarPhotoFile
 import com.drift.stream.domain.profile.PROFILE_NAME_MAX_LENGTH
 import com.drift.stream.domain.profile.normalizeAvatarColor
 import com.drift.stream.presentation.common.NexusButton
@@ -227,7 +228,7 @@ private fun AvatarPreviewWithBadge(
     val photoModel =
         if (state.avatarKind == AvatarKind.Photo) {
             state.pendingPhotoPath ?: state.existingPhotoProfileId?.let { id ->
-                java.io.File(context.filesDir, "avatars/$id.jpg")
+                avatarPhotoFile(context.filesDir, id)
             }
         } else {
             null

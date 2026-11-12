@@ -3,7 +3,6 @@ package com.drift.stream.data.profile
 import com.drift.stream.data.local.db.NexusDatabase
 import com.drift.stream.data.local.db.TransactionRunner
 import com.drift.stream.data.local.db.entity.ProfileEntity
-import com.drift.stream.data.player.PlayerTrace
 import com.drift.stream.di.IoDispatcher
 import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.model.ProfileDraft
@@ -31,11 +30,9 @@ class ProfileRepositoryImpl
         private val transactionRunner: TransactionRunner,
         @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
         private val activeProfileProvider: ActiveProfileProvider,
-        private val profileDataStores: ProfileDataStores,
+        private val profileFilesCleaner: ProfileFilesCleaner,
         private val downloadManager: Provider<DownloadManager>,
     ) : ProfileRepository {
-        @Inject
-        internal lateinit var avatarPhotoStore: AvatarPhotoStore
         private val profileDao = database.profileDao()
         private val addonDao = database.addonDao()
         private val profileAddonPrefsDao = database.profileAddonPrefsDao()
@@ -196,13 +193,7 @@ class ProfileRepositoryImpl
                     downloadDao.deleteAllForProfile(id)
                     profileDao.deleteById(id)
                 }
-                try {
-                    profileDataStores.delete(id)
-                } catch (expected: Exception) {
-                    PlayerTrace.log("profile.delete_error")
-                    throw expected
-                }
-                avatarPhotoStore.delete(id)
+                profileFilesCleaner.deleteFiles(id)
                 DeleteResult.Deleted
             }
     }

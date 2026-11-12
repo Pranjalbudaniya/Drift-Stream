@@ -49,11 +49,9 @@ class CompleteSetupTest {
                 },
             ioDispatcher = UnconfinedTestDispatcher(testScheduler),
             activeProfileProvider = activeProfileProvider,
-            profileDataStores = mockk(relaxed = true),
+            profileFilesCleaner = ProfileFilesCleaner(mockk(relaxed = true), mockk(relaxed = true)),
             downloadManager = { mockk(relaxed = true) },
-        ).apply {
-            this.avatarPhotoStore = mockk(relaxed = true)
-        }
+        )
 
     @Test
     fun CS1_completeSetup_updatesNameAvatarAndClearsNeedsSetupInOneWrite() =

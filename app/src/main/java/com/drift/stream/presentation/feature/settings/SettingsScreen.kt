@@ -60,11 +60,11 @@ import com.drift.stream.domain.usecase.LanguageCodes
 import com.drift.stream.presentation.common.NexusCard
 import com.drift.stream.presentation.common.NexusIconButton
 import com.drift.stream.presentation.common.ProfileAvatar
+import com.drift.stream.presentation.common.ProfileAvatarFor
 import com.drift.stream.presentation.feature.profile.ProfilesSettingsViewModel
 import com.drift.stream.presentation.theme.NexusTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.io.File
 import kotlin.math.roundToInt
 
 private const val RES_4K = 2160
@@ -545,29 +545,7 @@ private fun ProfileSettingsEntry(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val spacing = NexusTheme.spacing
-
-    val photoFile =
-        remember(profile?.id, profile?.avatarPhotoStamp) {
-            val id = profile?.id
-            val stamp = profile?.avatarPhotoStamp
-            if (id != null && stamp != null) {
-                File(context.filesDir, "avatars/$id.jpg")
-            } else {
-                null
-            }
-        }
-    val memoryCacheKey =
-        remember(profile?.id, profile?.avatarPhotoStamp) {
-            val id = profile?.id
-            val stamp = profile?.avatarPhotoStamp
-            if (id != null && stamp != null) {
-                "avatar:$id:$stamp"
-            } else {
-                null
-            }
-        }
 
     NexusCard(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -587,15 +565,19 @@ private fun ProfileSettingsEntry(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(spacing.md),
             ) {
-                ProfileAvatar(
-                    colorIndex = profile?.avatarColor ?: 0,
-                    emoji = profile?.avatarEmoji,
-                    name = profile?.name.orEmpty(),
-                    size = SETTINGS_PROFILE_AVATAR_SIZE,
-                    customColor = profile?.avatarCustomColor,
-                    photoModel = photoFile,
-                    memoryCacheKey = memoryCacheKey,
-                )
+                if (profile != null) {
+                    ProfileAvatarFor(
+                        profile = profile,
+                        size = SETTINGS_PROFILE_AVATAR_SIZE,
+                    )
+                } else {
+                    ProfileAvatar(
+                        colorIndex = 0,
+                        emoji = null,
+                        name = "",
+                        size = SETTINGS_PROFILE_AVATAR_SIZE,
+                    )
+                }
 
                 Column(
                     modifier = Modifier.weight(1f),

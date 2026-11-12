@@ -40,7 +40,6 @@ data class EditProfileUiState(
     val canDelete: Boolean = false,
     val showDeleteDialog: Boolean = false,
     val isDeleting: Boolean = false,
-    val deleteErrorMessage: String? = null,
     @StringRes val deleteErrorRes: Int? = null,
     val closeScreen: Boolean = false,
     val activeProfileId: Long? = null,
@@ -187,7 +186,7 @@ class EditProfileViewModel
             when (event) {
                 EditProfileEvent.DeleteClicked -> {
                     _uiState.value =
-                        _uiState.value.copy(showDeleteDialog = true, deleteErrorMessage = null, deleteErrorRes = null)
+                        _uiState.value.copy(showDeleteDialog = true, deleteErrorRes = null)
                 }
 
                 EditProfileEvent.DeleteCancelled -> {
@@ -213,7 +212,7 @@ class EditProfileViewModel
                 }
 
                 EditProfileEvent.DeleteErrorDismissed -> {
-                    _uiState.value = _uiState.value.copy(deleteErrorMessage = null, deleteErrorRes = null)
+                    _uiState.value = _uiState.value.copy(deleteErrorRes = null)
                 }
             }
         }
@@ -316,7 +315,7 @@ class EditProfileViewModel
             if (canDeleteProfile(currentProfile, activeId, deleteHost)) {
                 isDeleting = true
                 _uiState.value =
-                    _uiState.value.copy(isDeleting = true, deleteErrorMessage = null, deleteErrorRes = null)
+                    _uiState.value.copy(isDeleting = true, deleteErrorRes = null)
 
                 viewModelScope.launch {
                     try {
@@ -338,7 +337,6 @@ class EditProfileViewModel
                         _uiState.value =
                             _uiState.value.copy(
                                 isDeleting = false,
-                                deleteErrorMessage = "Couldn't delete. Try again.",
                                 deleteErrorRes = R.string.profile_delete_error_failed,
                             )
                     } finally {
@@ -367,7 +365,6 @@ class EditProfileViewModel
                         _uiState.value.copy(
                             isDeleting = false,
                             showDeleteDialog = false,
-                            deleteErrorMessage = "Switch to another profile first.",
                             deleteErrorRes = R.string.profile_delete_refused_active,
                         )
                 }
@@ -377,7 +374,6 @@ class EditProfileViewModel
                         _uiState.value.copy(
                             isDeleting = false,
                             showDeleteDialog = false,
-                            deleteErrorMessage = "This profile can't be deleted.",
                             deleteErrorRes = R.string.profile_delete_refused_owner,
                         )
                 }

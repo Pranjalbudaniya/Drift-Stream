@@ -50,11 +50,9 @@ class ProfileRepositoryAvatarTest {
                 },
             ioDispatcher = UnconfinedTestDispatcher(testScheduler),
             activeProfileProvider = activeProfileProvider,
-            profileDataStores = mockk(relaxed = true),
+            profileFilesCleaner = ProfileFilesCleaner(mockk(relaxed = true), mockk(relaxed = true)),
             downloadManager = { downloadManager },
-        ).apply {
-            this.avatarPhotoStore = mockk(relaxed = true)
-        }
+        )
 
     @Test
     fun PR1_create_withCustomColor_roundTrips() =

@@ -66,11 +66,9 @@ class ProfileRepositoryImplTest {
             transactionRunner = transactionRunner,
             ioDispatcher = UnconfinedTestDispatcher(testScheduler),
             activeProfileProvider = activeProfileProvider,
-            profileDataStores = profileDataStores,
+            profileFilesCleaner = ProfileFilesCleaner(profileDataStores, mockk(relaxed = true)),
             downloadManager = { downloadManager },
-        ).apply {
-            this.avatarPhotoStore = mockk(relaxed = true)
-        }
+        )
 
     @Test
     fun PF1_ensureDefaultProfile_createsProfileOneWhenEmpty() =

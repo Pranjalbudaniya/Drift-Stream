@@ -39,7 +39,7 @@ class AvatarPhotoStoreImpl(
     private val avatarsDir: File
         get() = File(rootDir, AVATARS_DIR_NAME)
 
-    override fun fileOf(profileId: Long): File = File(avatarsDir, "$profileId$AVATAR_EXTENSION")
+    override fun fileOf(profileId: Long): File = avatarPhotoFile(rootDir, profileId)
 
     override suspend fun write(
         profileId: Long,
@@ -95,6 +95,5 @@ class AvatarPhotoStoreImpl(
 
     companion object {
         private const val AVATARS_DIR_NAME = "avatars"
-        private const val AVATAR_EXTENSION = ".jpg"
     }
 }

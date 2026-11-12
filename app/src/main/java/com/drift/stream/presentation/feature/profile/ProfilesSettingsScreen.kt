@@ -28,7 +28,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -41,8 +40,8 @@ import com.drift.stream.domain.model.Profile
 import com.drift.stream.presentation.common.NexusCard
 import com.drift.stream.presentation.common.NexusIconButton
 import com.drift.stream.presentation.common.ProfileAvatar
+import com.drift.stream.presentation.common.ProfileAvatarFor
 import com.drift.stream.presentation.theme.NexusTheme
-import java.io.File
 
 private val PROFILE_ROW_AVATAR_SIZE = 40.dp
 private val BADGE_VERTICAL_PADDING = 2.dp
@@ -129,26 +128,8 @@ private fun ProfileItemRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val spacing = NexusTheme.spacing
     val profile = item.profile
-
-    val photoFile =
-        remember(profile.id, profile.avatarPhotoStamp) {
-            if (profile.avatarPhotoStamp != null) {
-                File(context.filesDir, "avatars/${profile.id}.jpg")
-            } else {
-                null
-            }
-        }
-    val memoryCacheKey =
-        remember(profile.id, profile.avatarPhotoStamp) {
-            if (profile.avatarPhotoStamp != null) {
-                "avatar:${profile.id}:${profile.avatarPhotoStamp}"
-            } else {
-                null
-            }
-        }
 
     NexusCard(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -168,14 +149,9 @@ private fun ProfileItemRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(spacing.md),
             ) {
-                ProfileAvatar(
-                    colorIndex = profile.avatarColor,
-                    emoji = profile.avatarEmoji,
-                    name = profile.name,
+                ProfileAvatarFor(
+                    profile = profile,
                     size = PROFILE_ROW_AVATAR_SIZE,
-                    customColor = profile.avatarCustomColor,
-                    photoModel = photoFile,
-                    memoryCacheKey = memoryCacheKey,
                 )
 
                 Column(

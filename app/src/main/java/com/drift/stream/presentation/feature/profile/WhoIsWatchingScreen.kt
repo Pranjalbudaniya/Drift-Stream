@@ -48,6 +48,7 @@ import com.drift.stream.domain.model.Profile
 import com.drift.stream.presentation.common.NexusIconButton
 import com.drift.stream.presentation.common.NexusTextButton
 import com.drift.stream.presentation.common.ProfileAvatar
+import com.drift.stream.presentation.common.ProfileAvatarFor
 import com.drift.stream.presentation.theme.NexusTheme
 import com.drift.stream.presentation.theme.tokens.AvatarTileSize
 
@@ -189,23 +190,6 @@ private fun ProfileTile(
     modifier: Modifier = Modifier,
     isManaging: Boolean = false,
 ) {
-    val context = LocalContext.current
-    val photoFile =
-        androidx.compose.runtime.remember(profile.id, profile.avatarPhotoStamp) {
-            if (profile.avatarPhotoStamp != null) {
-                java.io.File(context.filesDir, "avatars/${profile.id}.jpg")
-            } else {
-                null
-            }
-        }
-    val memoryCacheKey =
-        androidx.compose.runtime.remember(profile.id, profile.avatarPhotoStamp) {
-            if (profile.avatarPhotoStamp != null) {
-                "avatar:${profile.id}:${profile.avatarPhotoStamp}"
-            } else {
-                null
-            }
-        }
     val contentDesc =
         if (isManaging) {
             stringResource(R.string.who_is_watching_edit_tile_cd, profile.name)
@@ -225,14 +209,9 @@ private fun ProfileTile(
                 ).padding(NexusTheme.spacing.xs),
     ) {
         Box(contentAlignment = Alignment.Center) {
-            ProfileAvatar(
-                colorIndex = profile.avatarColor,
-                emoji = profile.avatarEmoji,
-                name = profile.name,
+            ProfileAvatarFor(
+                profile = profile,
                 size = AvatarTileSize,
-                customColor = profile.avatarCustomColor,
-                photoModel = photoFile,
-                memoryCacheKey = memoryCacheKey,
             )
             if (isManaging) {
                 Box(

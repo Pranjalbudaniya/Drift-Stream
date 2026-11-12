@@ -989,5 +989,24 @@
     <string name="profile_add_photo_save_failed">Profile added, but the photo couldn\'t be saved.</string>
     <string name="emoji_picker_title">Choose an emoji</string>
     <string name="emoji_picker_close">Close</string>
+
+    <!-- P20c: Edit and delete profiles -->
+    <string name="edit_profile_title">Edit profile</string>
+    <string name="edit_profile_save_button">Save</string>
+    <string name="profile_delete_button">Delete profile</string>
+    <string name="profile_delete_dialog_title">Delete %1$s?</string>
+    <string name="profile_delete_dialog_text">This permanently deletes %1$s\'s watchlist, watch history, search history, add-ons, settings and downloaded files. This can\'t be undone.</string>
+    <string name="profile_delete_dialog_cancel">Cancel</string>
+    <string name="profile_delete_dialog_confirm">Delete</string>
+    <string name="profile_delete_refused_active">Switch to another profile first.</string>
+    <string name="profile_delete_refused_owner">This profile can\'t be deleted.</string>
+    <string name="profile_delete_error_failed">Couldn\'t delete. Try again.</string>
+    <string name="who_is_watching_manage_profiles">Manage profiles</string>
+    <string name="who_is_watching_done">Done</string>
+    <string name="who_is_watching_edit">Edit</string>
+    <string name="who_is_watching_edit_tile_cd">Edit %1$s</string>
+    <string name="profiles_title">Profiles</string>
+    <string name="profile_badge_owner">Owner</string>
+    <string name="profile_badge_current">Current</string>
 </resources>
 

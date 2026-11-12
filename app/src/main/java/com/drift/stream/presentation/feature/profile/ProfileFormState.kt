@@ -184,6 +184,7 @@ fun reduceProfileForm(
                 state.copy(
                     pendingPhotoPath = event.path,
                     emoji = null,
+                    existingPhotoStamp = null,
                     photoError = false,
                 ),
                 null,
@@ -195,6 +196,7 @@ fun reduceProfileForm(
                 state.copy(
                     emoji = null,
                     pendingPhotoPath = null,
+                    existingPhotoStamp = null,
                 ),
                 null,
             )
@@ -264,5 +266,5 @@ private fun reduceAvatarEmoji(
     if (emoji != null && !isValidAvatarEmoji(emoji)) {
         state
     } else {
-        state.copy(emoji = emoji, pendingPhotoPath = null)
+        state.copy(emoji = emoji, pendingPhotoPath = null, existingPhotoStamp = null)
     }

@@ -13,19 +13,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -37,13 +38,16 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.drift.stream.R
 import com.drift.stream.domain.model.AppError
 import com.drift.stream.domain.model.HomeRowSpec
+import com.drift.stream.domain.model.Profile
 import com.drift.stream.presentation.common.ContentRow
 import com.drift.stream.presentation.common.NexusButton
 import com.drift.stream.presentation.common.NexusCard
-import com.drift.stream.presentation.common.NexusIconButton
 import com.drift.stream.presentation.common.NexusOutlinedButton
 import com.drift.stream.presentation.common.NexusRefreshBox
 import com.drift.stream.presentation.common.labelResId
+import com.drift.stream.presentation.feature.profile.ProfileSwitcherEffect
+import com.drift.stream.presentation.feature.profile.ProfileSwitcherSheet
+import com.drift.stream.presentation.feature.profile.ProfileSwitcherViewModel
 import com.drift.stream.presentation.theme.NexusTheme
 
 @Composable
@@ -51,26 +55,64 @@ fun HomeScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToAddons: () -> Unit,
     onItemClick: (type: String, id: String) -> Unit,
+    onProfileSwitched: () -> Unit = {},
+    onNavigateToAddProfile: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
+    switcherViewModel: ProfileSwitcherViewModel = hiltViewModel(),
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val switcherState by switcherViewModel.uiState.collectAsState()
+    var isSwitcherOpen by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(switcherViewModel) {
+        switcherViewModel.effects.collect { effect ->
+            when (effect) {
+                ProfileSwitcherEffect.Switched -> {
+                    isSwitcherOpen = false
+                    onProfileSwitched()
+                }
+
+                ProfileSwitcherEffect.OpenAddProfile -> {
+                    isSwitcherOpen = false
+                    onNavigateToAddProfile()
+                }
+
+                ProfileSwitcherEffect.Close -> {
+                    isSwitcherOpen = false
+                }
+            }
+        }
+    }
+
     HomeScreenContent(
         uiState = uiState,
+        activeProfile = switcherState.activeProfile,
         onEvent = viewModel::onEvent,
         onNavigateToSettings = onNavigateToSettings,
+        onOpenProfileSwitcher = { isSwitcherOpen = true },
         onNavigateToAddons = onNavigateToAddons,
         onItemClick = onItemClick,
         modifier = modifier,
     )
+
+    if (isSwitcherOpen) {
+        ProfileSwitcherSheet(
+            state = switcherState,
+            onEvent = switcherViewModel::onEvent,
+            onDismiss = { isSwitcherOpen = false },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HomeScreenContent(
     uiState: HomeUiState,
+    activeProfile: Profile? = null,
     onEvent: (HomeEvent) -> Unit,
     onNavigateToSettings: () -> Unit,
+    onOpenProfileSwitcher: () -> Unit = {},
     onNavigateToAddons: () -> Unit,
     onItemClick: (type: String, id: String) -> Unit,
     modifier: Modifier = Modifier,
@@ -88,12 +130,11 @@ internal fun HomeScreenContent(
                     )
                 },
                 actions = {
-                    NexusIconButton(onClick = onNavigateToSettings) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = stringResource(R.string.settings_gear_description),
-                        )
-                    }
+                    ProfileAvatarButton(
+                        profile = activeProfile,
+                        onClick = onNavigateToSettings,
+                        onLongClick = onOpenProfileSwitcher,
+                    )
                 },
             )
         },
@@ -299,38 +340,6 @@ private fun EmptyStateView(
     }
 }
 
-@Preview(name = "HomeScreen - Populated")
-@Composable
-internal fun HomeScreenPopulatedPreview() {
-    NexusTheme {
-        HomeScreenContent(
-            uiState =
-                HomeUiState(
-                    rows =
-                        listOf(
-                            HomeRow(
-                                spec =
-                                    HomeRowSpec(
-                                        key = "cinemeta|movie|top",
-                                        title = "Popular - Movies",
-                                        transportUrl = "https://v3-cinemeta.strem.io",
-                                        type = "movie",
-                                        catalogId = "top",
-                                    ),
-                                status = RowStatus.Loading,
-                            ),
-                        ),
-                    hasAddons = true,
-                    hasCatalogRows = true,
-                ),
-            onEvent = {},
-            onNavigateToSettings = {},
-            onNavigateToAddons = {},
-            onItemClick = { _, _ -> },
-        )
-    }
-}
-
 @Preview(name = "HomeScreen - Empty No Addons")
 @Composable
 internal fun HomeScreenEmptyNoAddonsPreview() {
@@ -428,28 +437,74 @@ private fun AllRowsHiddenView(
     }
 }
 
-@Preview(name = "HomeScreen - All Rows Hidden Light")
+private val sampleHomeProfile =
+    Profile(
+        id = 1L,
+        name = "Me",
+        avatarColor = 0,
+        avatarEmoji = null,
+        isOwner = true,
+        needsSetup = false,
+        pinHash = null,
+        pinSalt = null,
+        pinIterations = null,
+        createdAt = 1000L,
+        lastUsedAt = 1000L,
+        sortOrder = 1,
+    )
+
+@Preview(name = "HomeScreen - With Avatar Light")
 @Composable
-internal fun HomeScreenAllRowsHiddenLightPreview() {
+internal fun HomeScreenWithAvatarLightPreview() {
     NexusTheme {
         HomeScreenContent(
-            uiState =
-                HomeUiState(
-                    hasAddons = true,
-                    hasCatalogRows = true,
-                    allRowsHidden = true,
-                ),
+            uiState = HomeUiState(hasAddons = true, hasCatalogRows = true),
+            activeProfile = sampleHomeProfile,
             onEvent = {},
             onNavigateToSettings = {},
+            onOpenProfileSwitcher = {},
             onNavigateToAddons = {},
             onItemClick = { _, _ -> },
         )
     }
 }
 
+@Preview(name = "HomeScreen - With Avatar Dark", uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+internal fun HomeScreenWithAvatarDarkPreview() {
+    NexusTheme {
+        HomeScreenContent(
+            uiState = HomeUiState(hasAddons = true, hasCatalogRows = true),
+            activeProfile = sampleHomeProfile,
+            onEvent = {},
+            onNavigateToSettings = {},
+            onOpenProfileSwitcher = {},
+            onNavigateToAddons = {},
+            onItemClick = { _, _ -> },
+        )
+    }
+}
+
+@Preview(name = "HomeScreen - Loading Placeholder")
+@Composable
+internal fun HomeScreenLoadingPlaceholderPreview() {
+    NexusTheme {
+        HomeScreenContent(
+            uiState = HomeUiState(hasAddons = true, hasCatalogRows = true),
+            activeProfile = null,
+            onEvent = {},
+            onNavigateToSettings = {},
+            onOpenProfileSwitcher = {},
+            onNavigateToAddons = {},
+            onItemClick = { _, _ -> },
+        )
+    }
+}
+
+@Preview(name = "HomeScreen - All Rows Hidden Light")
 @Preview(name = "HomeScreen - All Rows Hidden Dark", uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
-internal fun HomeScreenAllRowsHiddenDarkPreview() {
+internal fun HomeScreenAllRowsHiddenPreview() {
     NexusTheme {
         HomeScreenContent(
             uiState =
@@ -458,8 +513,10 @@ internal fun HomeScreenAllRowsHiddenDarkPreview() {
                     hasCatalogRows = true,
                     allRowsHidden = true,
                 ),
+            activeProfile = sampleHomeProfile,
             onEvent = {},
             onNavigateToSettings = {},
+            onOpenProfileSwitcher = {},
             onNavigateToAddons = {},
             onItemClick = { _, _ -> },
         )

@@ -11,6 +11,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
 import com.drift.stream.domain.profile.DeleteHost
+import com.drift.stream.domain.profile.tabsToClearOnSwitch
 import com.drift.stream.presentation.feature.addons.AddonManagerScreen
 import com.drift.stream.presentation.feature.detail.DetailScreen
 import com.drift.stream.presentation.feature.discover.DiscoverScreen
@@ -67,6 +68,12 @@ fun NexusNavHost(
                 onItemClick = { type, id ->
                     navController.navigate(Detail(type = type, id = id))
                 },
+                onProfileSwitched = {
+                    for (tab in tabsToClearOnSwitch()) {
+                        navController.clearBackStack(tab.route)
+                    }
+                },
+                onNavigateToAddProfile = { navController.navigate(ProfileAdd) },
             )
         }
         composable<Discover> {

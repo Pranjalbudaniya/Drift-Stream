@@ -364,7 +364,6 @@
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
-    <string name="settings_gear_description">Settings</string>
     <string name="settings_addons_title">Addons</string>
     <!-- Settings section cards -->
     <string name="settings_section_appearance">Appearance</string>
@@ -1008,5 +1007,14 @@
     <string name="profiles_title">Profiles</string>
     <string name="profile_badge_owner">Owner</string>
     <string name="profile_badge_current">Current</string>
+
+    <!-- P20d: Home avatar switcher and roles -->
+    <string name="home_profile_avatar_cd">Profile: %1$s</string>
+    <string name="home_profile_avatar_click_label">Open settings</string>
+    <string name="home_profile_avatar_long_click_label">Switch profile</string>
+    <string name="profile_switcher_title">Switch profile</string>
+    <string name="profile_switcher_error_failed">Couldn\'t switch profile. Try again.</string>
+    <string name="settings_always_show_picker">Always show Who\'s watching</string>
+    <string name="settings_always_show_picker_desc">Ask who\'s watching every time the app starts, even with one profile.</string>
 </resources>
 

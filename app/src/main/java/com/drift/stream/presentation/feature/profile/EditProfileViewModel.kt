@@ -52,6 +52,8 @@ data class EditProfileUiState(
     @StringRes val deleteErrorRes: Int? = null,
     val closeScreen: Boolean = false,
     val activeProfileId: Long? = null,
+    val activeProfile: Profile? = null,
+    val host: DeleteHost = DeleteHost.Picker,
     val cropBitmap: Bitmap? = null,
     val pinLockEnabled: Boolean = false,
     val pinActionError: Boolean = false,
@@ -94,6 +96,8 @@ sealed interface EditProfileEvent {
     data object ChangePinClicked : EditProfileEvent
 
     data object RemovePinClicked : EditProfileEvent
+
+    data object ResetPinClicked : EditProfileEvent
 }
 
 class AvatarPhotoServices
@@ -149,6 +153,8 @@ class EditProfileViewModel
                 profileRepository.profiles.collect { profiles ->
                     currentProfiles = profiles
                     val id = targetProfileId ?: return@collect
+                    val activeId = activeProfileHolder.activeProfileId.value
+                    val active = if (activeId != null) profiles.find { it.id == activeId } else null
                     val currentLoaded = _uiState.value.profile
                     if (currentLoaded != null && currentLoaded.id == id) {
                         val updated = profiles.find { it.id == id }
@@ -156,6 +162,7 @@ class EditProfileViewModel
                             _uiState.value =
                                 _uiState.value.copy(
                                     profile = updated,
+                                    activeProfile = active,
                                     pinLockEnabled = updated.isLocked,
                                 )
                         }
@@ -170,11 +177,13 @@ class EditProfileViewModel
             viewModelScope.launch {
                 activeProfileHolder.activeProfileId.collect { activeId ->
                     val profile = _uiState.value.profile
+                    val active = if (activeId != null) currentProfiles.find { it.id == activeId } else null
                     if (profile != null) {
                         _uiState.value =
                             _uiState.value.copy(
                                 canDelete = canDeleteProfile(profile, activeId, deleteHost),
                                 activeProfileId = activeId,
+                                activeProfile = active,
                             )
                     }
                 }
@@ -187,6 +196,7 @@ class EditProfileViewModel
         ) {
             targetProfileId = profileId
             deleteHost = host
+            _uiState.value = _uiState.value.copy(host = host)
             viewModelScope.launch {
                 val profile = profileRepository.get(profileId)
                 if (profile == null) {
@@ -195,13 +205,18 @@ class EditProfileViewModel
                     return@launch
                 }
                 val activeId = activeProfileHolder.activeProfileId.value
+                val activeProfile =
+                    if (activeId != null) {
+                        currentProfiles.find { it.id == activeId }
+                            ?: if (host == DeleteHost.Settings) {
+                                profileRepository.get(activeId)
+                            } else {
+                                null
+                            }
+                    } else {
+                        null
+                    }
                 if (host == DeleteHost.Settings) {
-                    val activeProfile =
-                        if (activeId != null) {
-                            currentProfiles.find { it.id == activeId } ?: profileRepository.get(activeId)
-                        } else {
-                            null
-                        }
                     if (!canEditProfile(profile, activeProfile)) {
                         _effects.emit(EditProfileEffect.Close)
                         _uiState.value = _uiState.value.copy(closeScreen = true)
@@ -215,6 +230,8 @@ class EditProfileViewModel
                         formState = defaultStateForEdit(profile),
                         canDelete = canDelete,
                         activeProfileId = activeId,
+                        activeProfile = activeProfile,
+                        host = host,
                         pinLockEnabled = profile.isLocked,
                     )
             }
@@ -274,6 +291,7 @@ class EditProfileViewModel
                 EditProfileEvent.SetPinClicked,
                 EditProfileEvent.ChangePinClicked,
                 EditProfileEvent.RemovePinClicked,
+                EditProfileEvent.ResetPinClicked,
                 -> {
                     handlePinAction(event)
                 }

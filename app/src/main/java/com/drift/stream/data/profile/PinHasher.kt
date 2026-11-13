@@ -36,6 +36,7 @@ open class PinHasher(
             val spec = PBEKeySpec(pin.toCharArray(), saltBytes, iterations, PIN_KEY_BITS)
             val factory = SecretKeyFactory.getInstance(ALGORITHM)
             val keyBytes = factory.generateSecret(spec).encoded
+            spec.clearPassword()
             Base64.getEncoder().withoutPadding().encodeToString(keyBytes)
         }
 

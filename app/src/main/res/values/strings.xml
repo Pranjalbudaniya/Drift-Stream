@@ -1040,5 +1040,27 @@
     <string name="pin_confirm_description">Confirm PIN</string>
     <string name="pin_dots_description">%1$d of 6 digits</string>
     <string name="pin_cancel_description">Cancel</string>
+
+    <plurals name="pin_digits_entered">
+        <item quantity="one">%d digit entered</item>
+        <item quantity="other">%d digits entered</item>
+    </plurals>
+    <string name="pin_offer_title">Protect this profile with a PIN?</string>
+    <string name="pin_offer_message">A PIN keeps other people on this phone out of this profile.</string>
+    <string name="pin_offer_skip">Skip</string>
+    <string name="profile_save_pin_failed">Profile saved, but the PIN couldn\'t be set. You can set it in Edit profile.</string>
+    <string name="pin_reset_button">Reset PIN</string>
+    <string name="pin_reset_dialog_title">Remove the PIN of %1$s?</string>
+    <string name="pin_reset_dialog_message">%1$s will be able to open their profile without a PIN.</string>
+    <string name="pin_enter_owner_reset_title">Enter the owner\'s PIN to reset this PIN</string>
+    <string name="pin_enter_owner_delete_title">Enter the owner\'s PIN to delete this profile</string>
+    <string name="pin_enter_owner_manage_title">Enter the owner\'s PIN to manage profiles</string>
+    <string name="pin_forgot_button">Forgot PIN?</string>
+    <string name="pin_forgot_owner_dialog_title">Erase everything and start over?</string>
+    <string name="pin_forgot_owner_dialog_message">This deletes all profiles, watchlists, watch history, add-ons, settings and downloads of this app on this phone, and the app closes. This can\'t be undone.</string>
+    <string name="pin_forgot_owner_confirm">Erase everything</string>
+    <string name="pin_forgot_others_dialog_message">Ask the owner to reset your PIN. In the owner profile open Settings → Manage profiles → your profile → Reset PIN.</string>
+    <string name="pin_forgot_erase_failed">Couldn\'t erase. Clear the app\'s data in Android Settings instead.</string>
+    <string name="dialog_ok">OK</string>
 </resources>
 

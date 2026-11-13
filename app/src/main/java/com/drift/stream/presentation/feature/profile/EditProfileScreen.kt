@@ -44,7 +44,10 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.drift.stream.R
+import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.profile.DeleteHost
+import com.drift.stream.domain.profile.PinSectionMode
+import com.drift.stream.domain.profile.pinSectionMode
 import com.drift.stream.presentation.common.NexusIconButton
 import com.drift.stream.presentation.common.NexusOutlinedButton
 import com.drift.stream.presentation.common.NexusTextButton
@@ -200,13 +203,35 @@ fun EditProfileContent(
 
                 Spacer(modifier = Modifier.height(NexusTheme.spacing.lg))
 
-                PinLockSection(
-                    isLocked = state.pinLockEnabled,
-                    actionError = state.pinActionError,
-                    onSetPin = { onEditEvent(EditProfileEvent.SetPinClicked) },
-                    onChangePin = { onEditEvent(EditProfileEvent.ChangePinClicked) },
-                    onRemovePin = { onEditEvent(EditProfileEvent.RemovePinClicked) },
-                )
+                val targetProfile = state.profile
+                val pinSectionMode =
+                    if (targetProfile != null) {
+                        pinSectionMode(target = targetProfile, active = state.activeProfile, host = state.host)
+                    } else {
+                        PinSectionMode.None
+                    }
+                when (pinSectionMode) {
+                    PinSectionMode.Full -> {
+                        PinLockSection(
+                            isLocked = state.pinLockEnabled,
+                            actionError = state.pinActionError,
+                            onSetPin = { onEditEvent(EditProfileEvent.SetPinClicked) },
+                            onChangePin = { onEditEvent(EditProfileEvent.ChangePinClicked) },
+                            onRemovePin = { onEditEvent(EditProfileEvent.RemovePinClicked) },
+                        )
+                    }
+
+                    PinSectionMode.OwnerManage -> {
+                        if (state.pinLockEnabled) {
+                            OwnerResetPinSection(
+                                actionError = state.pinActionError,
+                                onResetPin = { onEditEvent(EditProfileEvent.ResetPinClicked) },
+                            )
+                        }
+                    }
+
+                    PinSectionMode.None -> {}
+                }
 
                 if (state.canDelete) {
                     Spacer(modifier = Modifier.height(NexusTheme.spacing.md))
@@ -286,13 +311,27 @@ fun DeleteProfileConfirmDialog(
     )
 }
 
+@Preview(name = "Edit Profile - Light", showBackground = true)
 @Preview(name = "Edit Profile - Dark", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
-internal fun EditProfileScreenDarkPreview() {
+internal fun EditProfileScreenPreview() {
     NexusTheme {
         EditProfileContent(
             state =
                 EditProfileUiState(
+                    profile =
+                        Profile(
+                            id = 1L,
+                            name = "Asha",
+                            avatarColor = 4,
+                            avatarEmoji = "🦊",
+                            isOwner = true,
+                            needsSetup = false,
+                            createdAt = 0L,
+                            lastUsedAt = 0L,
+                            sortOrder = 0,
+                            isLocked = false,
+                        ),
                     formState = ProfileFormState(name = "Asha", colorIndex = 4, emoji = "🦊"),
                     canDelete = true,
                 ),
@@ -303,26 +342,10 @@ internal fun EditProfileScreenDarkPreview() {
     }
 }
 
-@Preview(name = "Edit Profile - Light", showBackground = true)
-@Composable
-internal fun EditProfileScreenLightPreview() {
-    NexusTheme {
-        EditProfileContent(
-            state =
-                EditProfileUiState(
-                    formState = ProfileFormState(name = "Dev", colorIndex = 1, emoji = null),
-                    canDelete = false,
-                ),
-            onFormEvent = {},
-            onEditEvent = {},
-            onBack = {},
-        )
-    }
-}
-
+@Preview(name = "Delete Dialog - Light", showBackground = true)
 @Preview(name = "Delete Dialog - Dark", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
-internal fun DeleteProfileDialogDarkPreview() {
+internal fun DeleteProfileDialogPreview() {
     NexusTheme {
         DeleteProfileConfirmDialog(
             profileName = "Dev",
@@ -333,15 +356,91 @@ internal fun DeleteProfileDialogDarkPreview() {
     }
 }
 
-@Preview(name = "Delete Dialog - Light", showBackground = true)
 @Composable
-internal fun DeleteProfileDialogLightPreview() {
+fun OwnerResetPinSection(
+    actionError: Boolean,
+    onResetPin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = NexusTheme.spacing
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text(
+                    text = stringResource(R.string.pin_lock_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = stringResource(R.string.pin_lock_on),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            NexusOutlinedButton(onClick = onResetPin) {
+                Text(text = stringResource(R.string.pin_reset_button))
+            }
+        }
+
+        if (actionError) {
+            Spacer(modifier = Modifier.height(spacing.xs))
+            Text(
+                text = stringResource(R.string.pin_change_failed),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Preview(name = "Edit Profile - Reset PIN Light", showBackground = true)
+@Preview(name = "Edit Profile - Reset PIN Dark", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+internal fun EditProfileResetPinPreview() {
     NexusTheme {
-        DeleteProfileConfirmDialog(
-            profileName = "Dev",
-            isDeleting = true,
-            onConfirm = {},
-            onDismiss = {},
+        EditProfileContent(
+            state =
+                EditProfileUiState(
+                    profile =
+                        Profile(
+                            id = 2L,
+                            name = "Dev",
+                            avatarColor = 1,
+                            avatarEmoji = null,
+                            isOwner = false,
+                            needsSetup = false,
+                            createdAt = 0L,
+                            lastUsedAt = 0L,
+                            sortOrder = 1,
+                            isLocked = true,
+                        ),
+                    activeProfile =
+                        Profile(
+                            id = 1L,
+                            name = "Owner",
+                            avatarColor = 0,
+                            avatarEmoji = null,
+                            isOwner = true,
+                            needsSetup = false,
+                            createdAt = 0L,
+                            lastUsedAt = 0L,
+                            sortOrder = 0,
+                            isLocked = false,
+                        ),
+                    host = DeleteHost.Settings,
+                    formState = ProfileFormState(name = "Dev", colorIndex = 1, emoji = null),
+                    canDelete = true,
+                    pinLockEnabled = true,
+                ),
+            onFormEvent = {},
+            onEditEvent = {},
+            onBack = {},
         )
     }
 }

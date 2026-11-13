@@ -48,6 +48,7 @@ import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.profile.PIN_MAX_LENGTH
 import com.drift.stream.domain.profile.PIN_MIN_LENGTH
 import com.drift.stream.domain.profile.PendingPin
+import com.drift.stream.domain.profile.pinDotSlots
 import com.drift.stream.presentation.common.ProfileAvatarFor
 import com.drift.stream.presentation.theme.NexusTheme
 import java.util.Locale
@@ -58,16 +59,13 @@ val PIN_DOT_SIZE = 14.dp
 val PIN_DOT_SPACING = 12.dp
 val PIN_MESSAGE_HEIGHT = 24.dp
 val PIN_ROW_SPACING = 12.dp
-const val PIN_TOTAL_DOTS = 6
 private const val SECONDS_PER_MINUTE = 60
 private const val DISABLED_ALPHA = 0.38f
 private const val DIGIT_BG_ALPHA_ENABLED = 0.6f
 private const val DIGIT_BG_ALPHA_DISABLED = 0.2f
-private const val PREVIEW_ENTERING_DOT_COUNT = 3
 private const val PREVIEW_WRONG_TRIES = 3
 private const val PREVIEW_LOCKED_SECONDS = 30
 private const val PREVIEW_CREATE_DOT_COUNT = 2
-private const val PREVIEW_CONFIRM_DOT_COUNT = 4
 
 @Composable
 fun PinPadScreen(
@@ -168,11 +166,80 @@ internal fun PinPadContent(
 
             Spacer(modifier = Modifier.height(spacing.lg))
 
-            PinDotsRow(dotCount = uiState.dotCount)
+            val slots = pinDotSlots(uiState.dotCount)
+            val dotsDesc =
+                pluralStringResource(
+                    R.plurals.pin_digits_entered,
+                    uiState.dotCount,
+                    uiState.dotCount,
+                )
+            Row(
+                modifier =
+                    Modifier.semantics {
+                        contentDescription = dotsDesc
+                    },
+                horizontalArrangement = Arrangement.spacedBy(PIN_DOT_SPACING),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                for (i in 0 until slots) {
+                    val filled = i < uiState.dotCount
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(PIN_DOT_SIZE)
+                                .clip(CircleShape)
+                                .then(
+                                    if (filled) {
+                                        Modifier.background(MaterialTheme.colorScheme.primary)
+                                    } else {
+                                        Modifier.border(
+                                            width = 1.dp,
+                                            color = MaterialTheme.colorScheme.outline,
+                                            shape = CircleShape,
+                                        )
+                                    },
+                                ),
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(spacing.sm))
 
-            PinMessageLine(message = uiState.message)
+            Box(
+                modifier = Modifier.height(PIN_MESSAGE_HEIGHT),
+                contentAlignment = Alignment.Center,
+            ) {
+                val message = uiState.message
+                if (message != null) {
+                    val text =
+                        when (message) {
+                            is PinMessage.Wrong -> {
+                                pluralStringResource(
+                                    R.plurals.pin_wrong_tries_left,
+                                    message.triesLeft,
+                                    message.triesLeft,
+                                )
+                            }
+
+                            is PinMessage.Locked -> {
+                                val m = message.remainingSeconds / SECONDS_PER_MINUTE
+                                val s = message.remainingSeconds % SECONDS_PER_MINUTE
+                                val formatted = String.format(Locale.US, "%d:%02d", m, s)
+                                stringResource(R.string.pin_locked_countdown, formatted)
+                            }
+
+                            is PinMessage.Mismatch -> {
+                                stringResource(R.string.pin_mismatch)
+                            }
+                        }
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(spacing.md))
 
@@ -192,84 +259,6 @@ internal fun PinPadContent(
                     modifier = Modifier.padding(horizontal = spacing.md),
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun PinDotsRow(
-    dotCount: Int,
-    modifier: Modifier = Modifier,
-) {
-    val dotsDesc = stringResource(R.string.pin_dots_description, dotCount)
-    Row(
-        modifier =
-            modifier.semantics {
-                contentDescription = dotsDesc
-            },
-        horizontalArrangement = Arrangement.spacedBy(PIN_DOT_SPACING),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        for (i in 0 until PIN_TOTAL_DOTS) {
-            val filled = i < dotCount
-            Box(
-                modifier =
-                    Modifier
-                        .size(PIN_DOT_SIZE)
-                        .clip(CircleShape)
-                        .then(
-                            if (filled) {
-                                Modifier.background(MaterialTheme.colorScheme.primary)
-                            } else {
-                                Modifier.border(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outline,
-                                    shape = CircleShape,
-                                )
-                            },
-                        ),
-            )
-        }
-    }
-}
-
-@Composable
-private fun PinMessageLine(
-    message: PinMessage?,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier.height(PIN_MESSAGE_HEIGHT),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (message != null) {
-            val text =
-                when (message) {
-                    is PinMessage.Wrong -> {
-                        pluralStringResource(
-                            R.plurals.pin_wrong_tries_left,
-                            message.triesLeft,
-                            message.triesLeft,
-                        )
-                    }
-
-                    is PinMessage.Locked -> {
-                        val m = message.remainingSeconds / SECONDS_PER_MINUTE
-                        val s = message.remainingSeconds % SECONDS_PER_MINUTE
-                        val formatted = String.format(Locale.US, "%d:%02d", m, s)
-                        stringResource(R.string.pin_locked_countdown, formatted)
-                    }
-
-                    is PinMessage.Mismatch -> {
-                        stringResource(R.string.pin_mismatch)
-                    }
-                }
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
-                textAlign = TextAlign.Center,
-            )
         }
     }
 }
@@ -420,10 +409,10 @@ private val samplePreviewProfile =
         sortOrder = 0,
     )
 
-@Preview(name = "PinPad - Entering Light", showBackground = true)
-@Preview(name = "PinPad - Entering Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "PinPad - 0 Digits Light", showBackground = true)
+@Preview(name = "PinPad - 0 Digits Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Composable
-internal fun PinPadEnteringPreview() {
+internal fun PinPad0DigitsPreview() {
     NexusTheme {
         PinPadContent(
             uiState =
@@ -431,7 +420,61 @@ internal fun PinPadEnteringPreview() {
                     titleKind = PinTitleKind.EnterPin,
                     profile = samplePreviewProfile,
                     profileName = "Asha",
-                    dotCount = PREVIEW_ENTERING_DOT_COUNT,
+                    dotCount = 0,
+                ),
+            onEvent = {},
+        )
+    }
+}
+
+@Preview(name = "PinPad - 4 Digits Light", showBackground = true)
+@Preview(name = "PinPad - 4 Digits Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+internal fun PinPad4DigitsPreview() {
+    NexusTheme {
+        PinPadContent(
+            uiState =
+                PinPadUiState(
+                    titleKind = PinTitleKind.EnterPin,
+                    profile = samplePreviewProfile,
+                    profileName = "Asha",
+                    dotCount = 4,
+                ),
+            onEvent = {},
+        )
+    }
+}
+
+@Preview(name = "PinPad - 5 Digits Light", showBackground = true)
+@Preview(name = "PinPad - 5 Digits Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+internal fun PinPad5DigitsPreview() {
+    NexusTheme {
+        PinPadContent(
+            uiState =
+                PinPadUiState(
+                    titleKind = PinTitleKind.EnterPin,
+                    profile = samplePreviewProfile,
+                    profileName = "Asha",
+                    dotCount = 5,
+                ),
+            onEvent = {},
+        )
+    }
+}
+
+@Preview(name = "PinPad - 6 Digits Light", showBackground = true)
+@Preview(name = "PinPad - 6 Digits Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+internal fun PinPad6DigitsPreview() {
+    NexusTheme {
+        PinPadContent(
+            uiState =
+                PinPadUiState(
+                    titleKind = PinTitleKind.EnterPin,
+                    profile = samplePreviewProfile,
+                    profileName = "Asha",
+                    dotCount = 6,
                 ),
             onEvent = {},
         )
@@ -487,22 +530,6 @@ internal fun PinPadCreatePreview() {
                 PinPadUiState(
                     titleKind = PinTitleKind.CreatePin,
                     dotCount = PREVIEW_CREATE_DOT_COUNT,
-                ),
-            onEvent = {},
-        )
-    }
-}
-
-@Preview(name = "PinPad - Confirm Light", showBackground = true)
-@Preview(name = "PinPad - Confirm Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
-@Composable
-internal fun PinPadConfirmPreview() {
-    NexusTheme {
-        PinPadContent(
-            uiState =
-                PinPadUiState(
-                    titleKind = PinTitleKind.ConfirmPin,
-                    dotCount = PREVIEW_CONFIRM_DOT_COUNT,
                 ),
             onEvent = {},
         )

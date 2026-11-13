@@ -284,4 +284,81 @@ class AppGateViewModelTest {
             coVerify(exactly = 1) { activeProfileHolder.setActive(2L) }
             assertEquals(StartGate.Enter, vm.uiState.value.gate)
         }
+
+    @Test
+    fun GV10_manage_ownerLocked_requiresOwnerPin_thenManaging() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", isOwner = true, isLocked = true)
+            profilesFlow.value = listOf(owner)
+
+            coEvery { pinChallenges.ask(PinRequest.Verify(1L, PinPurpose.ManageProfiles)) } returns
+                PinResult.Verified("1234")
+
+            val vm = createViewModel()
+            testScheduler.advanceUntilIdle()
+            assertFalse(vm.uiState.value.managing)
+
+            vm.onManagePressed()
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Verify(1L, PinPurpose.ManageProfiles)) }
+            assertTrue(vm.uiState.value.managing)
+        }
+
+    @Test
+    fun GV11_manage_ownerLocked_pinCancelled_notManaging() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", isOwner = true, isLocked = true)
+            profilesFlow.value = listOf(owner)
+
+            coEvery { pinChallenges.ask(PinRequest.Verify(1L, PinPurpose.ManageProfiles)) } returns
+                PinResult.Cancelled
+
+            val vm = createViewModel()
+            testScheduler.advanceUntilIdle()
+            assertFalse(vm.uiState.value.managing)
+
+            vm.onManagePressed()
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Verify(1L, PinPurpose.ManageProfiles)) }
+            assertFalse(vm.uiState.value.managing)
+        }
+
+    @Test
+    fun GV12_manage_ownerNotLocked_opensDirectly() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", isOwner = true, isLocked = false)
+            profilesFlow.value = listOf(owner)
+
+            val vm = createViewModel()
+            testScheduler.advanceUntilIdle()
+            assertFalse(vm.uiState.value.managing)
+
+            vm.onManagePressed()
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 0) { pinChallenges.ask(any()) }
+            assertTrue(vm.uiState.value.managing)
+        }
+
+    @Test
+    fun GV13_manage_done_leavesManaging() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", isOwner = true, isLocked = false)
+            profilesFlow.value = listOf(owner)
+
+            val vm = createViewModel()
+            testScheduler.advanceUntilIdle()
+
+            vm.onManagePressed()
+            testScheduler.advanceUntilIdle()
+            assertTrue(vm.uiState.value.managing)
+
+            vm.onManageDone()
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 0) { pinChallenges.ask(any()) }
+            assertFalse(vm.uiState.value.managing)
+        }
 }

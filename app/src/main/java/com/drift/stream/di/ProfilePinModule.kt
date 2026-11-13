@@ -1,8 +1,10 @@
 package com.drift.stream.di
 
+import com.drift.stream.data.profile.AndroidAppDataEraser
 import com.drift.stream.data.profile.DefaultPinChallenges
 import com.drift.stream.data.profile.PinHasher
 import com.drift.stream.data.profile.ProfilePinRepositoryImpl
+import com.drift.stream.domain.profile.AppDataEraser
 import com.drift.stream.domain.profile.PinChallenges
 import com.drift.stream.domain.repository.ProfilePinRepository
 import dagger.Binds
@@ -23,6 +25,10 @@ interface ProfilePinModule {
     @Binds
     @Singleton
     fun bindPinChallenges(impl: DefaultPinChallenges): PinChallenges
+
+    @Binds
+    @Singleton
+    fun bindAppDataEraser(impl: AndroidAppDataEraser): AppDataEraser
 
     companion object {
         @Provides

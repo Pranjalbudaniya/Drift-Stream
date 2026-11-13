@@ -30,6 +30,7 @@ data class GateUiState(
     val profiles: List<Profile> = emptyList(),
     val chooseFailed: Boolean = false,
     val isChoosing: Boolean = false,
+    val managing: Boolean = false,
 )
 
 @HiltViewModel
@@ -44,6 +45,7 @@ class AppGateViewModel
         private val choseThisSession = MutableStateFlow(false)
         private val isChoosing = MutableStateFlow(false)
         private val chooseFailed = MutableStateFlow(false)
+        private val managing = MutableStateFlow(false)
         private var hasEnteredSession = false
 
         private data class GateInputs(
@@ -68,7 +70,8 @@ class AppGateViewModel
                 gateInputsFlow,
                 isChoosing,
                 chooseFailed,
-            ) { inputs, choosing, failed ->
+                managing,
+            ) { inputs, choosing, failed, isManaging ->
                 val gate =
                     if (hasEnteredSession) {
                         StartGate.Enter
@@ -90,6 +93,7 @@ class AppGateViewModel
                     profiles = inputs.profiles,
                     chooseFailed = failed,
                     isChoosing = choosing,
+                    managing = isManaging,
                 )
             }.stateIn(
                 scope = viewModelScope,
@@ -98,6 +102,7 @@ class AppGateViewModel
             )
 
         fun onProfileChosen(id: Long) {
+            managing.value = false
             if (isChoosing.value) return
             val profile = uiState.value.profiles.firstOrNull { it.id == id }
             isChoosing.value = true
@@ -140,5 +145,23 @@ class AppGateViewModel
 
         fun onChooseErrorShown() {
             chooseFailed.value = false
+        }
+
+        fun onManagePressed() {
+            val owner = uiState.value.profiles.firstOrNull { it.isOwner } ?: return
+            if (owner.isLocked) {
+                viewModelScope.launch {
+                    val result = pinChallenges.ask(PinRequest.Verify(owner.id, PinPurpose.ManageProfiles))
+                    if (result is PinResult.Verified) {
+                        managing.value = true
+                    }
+                }
+            } else {
+                managing.value = true
+            }
+        }
+
+        fun onManageDone() {
+            managing.value = false
         }
     }

@@ -1,6 +1,7 @@
 package com.drift.stream.presentation.feature.pin
 
 import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.profile.AppDataEraser
 import com.drift.stream.domain.profile.PendingPin
 import com.drift.stream.domain.profile.PinChallenges
 import com.drift.stream.domain.profile.PinPurpose
@@ -42,6 +43,7 @@ class PinPadViewModelTest {
     private val profilePinRepository = mockk<ProfilePinRepository>()
     private val profileRepository = mockk<ProfileRepository>()
     private val challenges = mockk<PinChallenges>(relaxed = true)
+    private val appDataEraser = mockk<AppDataEraser>(relaxed = true)
 
     private fun sampleProfile(id: Long = 1L): Profile =
         Profile(
@@ -75,6 +77,7 @@ class PinPadViewModelTest {
             profilePinRepository = profilePinRepository,
             profileRepository = profileRepository,
             challenges = challenges,
+            appDataEraser = appDataEraser,
         )
 
     @Test
@@ -273,5 +276,79 @@ class PinPadViewModelTest {
             testScheduler.advanceUntilIdle()
 
             coVerify(exactly = 1) { profilePinRepository.verify(1L, "1234") }
+        }
+
+    @Test
+    fun FP1_forgotPin_ownerPad_showsEraseConfirmation() =
+        testScope.runTest {
+            coEvery { profileRepository.get(1L) } returns sampleProfile(1L).copy(isOwner = true)
+            val viewModel = createViewModel()
+            viewModel.initialize(PendingPin(1L, PinRequest.Verify(1L, PinPurpose.EnterProfile)))
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(PinPadEvent.ForgotPinPressed)
+
+            assertEquals(ForgotState.OwnerErase, viewModel.uiState.value.forgot)
+        }
+
+    @Test
+    fun FP2_eraseConfirmed_callsEraser() =
+        testScope.runTest {
+            coEvery { profileRepository.get(1L) } returns sampleProfile(1L).copy(isOwner = true)
+            coEvery { appDataEraser.eraseEverything() } returns true
+            val viewModel = createViewModel()
+            viewModel.initialize(PendingPin(1L, PinRequest.Verify(1L, PinPurpose.EnterProfile)))
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(PinPadEvent.ForgotPinPressed)
+            viewModel.onEvent(PinPadEvent.EraseConfirmed)
+
+            verify(exactly = 1) { appDataEraser.eraseEverything() }
+        }
+
+    @Test
+    fun FP3_eraseDismissed_doesNothing() =
+        testScope.runTest {
+            coEvery { profileRepository.get(1L) } returns sampleProfile(1L).copy(isOwner = true)
+            val viewModel = createViewModel()
+            viewModel.initialize(PendingPin(1L, PinRequest.Verify(1L, PinPurpose.EnterProfile)))
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(PinPadEvent.ForgotPinPressed)
+            viewModel.onEvent(PinPadEvent.EraseDismissed)
+
+            assertNull(viewModel.uiState.value.forgot)
+            verify(exactly = 0) { appDataEraser.eraseEverything() }
+        }
+
+    @Test
+    fun FP4_forgotPin_nonOwnerPad_showsInfoOnly() =
+        testScope.runTest {
+            coEvery { profileRepository.get(2L) } returns sampleProfile(2L).copy(isOwner = false)
+            val viewModel = createViewModel()
+            viewModel.initialize(PendingPin(1L, PinRequest.Verify(2L, PinPurpose.EnterProfile)))
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(PinPadEvent.ForgotPinPressed)
+            assertEquals(ForgotState.OthersInfo, viewModel.uiState.value.forgot)
+
+            viewModel.onEvent(PinPadEvent.ForgotInfoDismissed)
+            assertNull(viewModel.uiState.value.forgot)
+            verify(exactly = 0) { appDataEraser.eraseEverything() }
+        }
+
+    @Test
+    fun FP5_eraseFails_showsMessage() =
+        testScope.runTest {
+            coEvery { profileRepository.get(1L) } returns sampleProfile(1L).copy(isOwner = true)
+            coEvery { appDataEraser.eraseEverything() } returns false
+            val viewModel = createViewModel()
+            viewModel.initialize(PendingPin(1L, PinRequest.Verify(1L, PinPurpose.EnterProfile)))
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(PinPadEvent.ForgotPinPressed)
+            viewModel.onEvent(PinPadEvent.EraseConfirmed)
+
+            assertEquals(ForgotState.EraseFailed, viewModel.uiState.value.forgot)
         }
 }

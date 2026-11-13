@@ -65,12 +65,12 @@ fun WhoIsWatchingScreen(
     modifier: Modifier = Modifier,
     onAddProfile: (() -> Unit)? = null,
     onEditProfile: ((Long) -> Unit)? = null,
-    initialManaging: Boolean = false,
+    isManaging: Boolean = false,
+    onManagePressed: (() -> Unit)? = null,
+    onManageDone: (() -> Unit)? = null,
 ) {
-    var isManaging by rememberSaveable { mutableStateOf(initialManaging) }
-
     BackHandler(enabled = isManaging) {
-        isManaging = false
+        onManageDone?.invoke()
     }
 
     Surface(
@@ -108,7 +108,7 @@ fun WhoIsWatchingScreen(
 
                     if (isManaging) {
                         NexusTextButton(
-                            onClick = { isManaging = false },
+                            onClick = { onManageDone?.invoke() },
                             modifier = Modifier.align(Alignment.CenterEnd),
                         ) {
                             Text(
@@ -118,7 +118,7 @@ fun WhoIsWatchingScreen(
                         }
                     } else if (onEditProfile != null) {
                         NexusIconButton(
-                            onClick = { isManaging = true },
+                            onClick = { onManagePressed?.invoke() },
                             enabled = !isChoosing,
                             modifier = Modifier.align(Alignment.CenterEnd),
                         ) {
@@ -402,7 +402,7 @@ internal fun WhoIsWatchingManageScreenLightPreview() {
             chooseFailed = false,
             onProfileChosen = {},
             onEditProfile = {},
-            initialManaging = true,
+            isManaging = true,
         )
     }
 }
@@ -441,7 +441,7 @@ internal fun WhoIsWatchingManageScreenDarkPreview() {
             chooseFailed = false,
             onProfileChosen = {},
             onEditProfile = {},
-            initialManaging = true,
+            isManaging = true,
         )
     }
 }

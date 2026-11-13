@@ -91,6 +91,9 @@ fun AppGate(
                         onEditProfile = { id ->
                             editingProfileId = id
                         },
+                        isManaging = uiState.managing,
+                        onManagePressed = gateViewModel::onManagePressed,
+                        onManageDone = gateViewModel::onManageDone,
                     )
                 }
             }

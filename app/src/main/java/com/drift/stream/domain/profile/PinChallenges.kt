@@ -15,6 +15,9 @@ enum class PinPurpose {
     EnterProfile,
     CurrentPinForChange,
     CurrentPinForRemove,
+    OwnerReset,
+    DeleteProfile,
+    ManageProfiles,
 }
 
 sealed interface PinResult {

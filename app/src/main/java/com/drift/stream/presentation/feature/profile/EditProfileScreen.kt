@@ -150,6 +150,14 @@ fun EditProfileScreen(
                 onDismiss = { viewModel.onEvent(EditProfileEvent.DeleteCancelled) },
             )
         }
+
+        if (state.showResetPinConfirm && state.profile != null) {
+            ResetPinConfirmDialog(
+                profileName = state.profile?.name.orEmpty(),
+                onConfirm = { viewModel.onEvent(EditProfileEvent.ResetPinConfirmed) },
+                onDismiss = { viewModel.onEvent(EditProfileEvent.ResetPinDismissed) },
+            )
+        }
     }
 }
 
@@ -308,6 +316,44 @@ fun DeleteProfileConfirmDialog(
                 Text(stringResource(R.string.profile_delete_dialog_cancel))
             }
         },
+    )
+}
+
+@Composable
+fun ResetPinConfirmDialog(
+    profileName: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = stringResource(R.string.pin_reset_dialog_title, profileName),
+                style = MaterialTheme.typography.headlineSmall,
+            )
+        },
+        text = {
+            Text(
+                text = stringResource(R.string.pin_reset_dialog_message, profileName),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        },
+        confirmButton = {
+            NexusTextButton(onClick = onConfirm) {
+                Text(
+                    text = stringResource(R.string.pin_remove_button),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+        dismissButton = {
+            NexusTextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.profile_delete_dialog_cancel))
+            }
+        },
+        modifier = modifier,
     )
 }
 

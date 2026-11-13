@@ -50,6 +50,20 @@ sealed interface PinManagerRemoveResult {
     data object NotFound : PinManagerRemoveResult
 }
 
+sealed interface OwnerResetPinResult {
+    data object Removed : OwnerResetPinResult
+
+    data class WrongPin(
+        val triesLeft: Int,
+    ) : OwnerResetPinResult
+
+    data class Locked(
+        val remainingMs: Long,
+    ) : OwnerResetPinResult
+
+    data object NotAllowed : OwnerResetPinResult
+}
+
 class ProfilePinManager
     @Inject
     constructor(
@@ -141,6 +155,54 @@ class ProfilePinManager
                 is VerifyResult.NotFound -> {
                     PinManagerRemoveResult.NotFound
                 }
+            }
+        }
+
+        suspend fun ownerResetPin(
+            ownerId: Long,
+            ownerPin: String?,
+            targetId: Long,
+        ): OwnerResetPinResult {
+            if (ownerId == targetId) {
+                return OwnerResetPinResult.NotAllowed
+            }
+            return executeOwnerReset(ownerId, ownerPin, targetId)
+        }
+
+        private suspend fun executeOwnerReset(
+            ownerId: Long,
+            ownerPin: String?,
+            targetId: Long,
+        ): OwnerResetPinResult {
+            val owner = profileRepository.get(ownerId)
+            val target = profileRepository.get(targetId)
+            val invalid = owner == null || !owner.isOwner || target?.isOwner != false
+            if (invalid) {
+                return OwnerResetPinResult.NotAllowed
+            }
+
+            return if (owner.isLocked) {
+                when (val verifyResult = profilePinRepository.verify(ownerId, ownerPin.orEmpty())) {
+                    is VerifyResult.Correct -> {
+                        profilePinRepository.removePin(targetId)
+                        OwnerResetPinResult.Removed
+                    }
+
+                    is VerifyResult.Wrong -> {
+                        OwnerResetPinResult.WrongPin(verifyResult.triesLeft)
+                    }
+
+                    is VerifyResult.Locked -> {
+                        OwnerResetPinResult.Locked(verifyResult.remainingMs)
+                    }
+
+                    else -> {
+                        OwnerResetPinResult.NotAllowed
+                    }
+                }
+            } else {
+                profilePinRepository.removePin(targetId)
+                OwnerResetPinResult.Removed
             }
         }
     }

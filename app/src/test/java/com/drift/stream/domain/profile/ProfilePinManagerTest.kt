@@ -21,13 +21,14 @@ class ProfilePinManagerTest {
     private fun sampleProfile(
         id: Long = 1L,
         isLocked: Boolean = false,
+        isOwner: Boolean = true,
     ): Profile =
         Profile(
             id = id,
             name = "Me",
             avatarColor = 0,
             avatarEmoji = null,
-            isOwner = true,
+            isOwner = isOwner,
             needsSetup = false,
             createdAt = 1000L,
             lastUsedAt = 1000L,
@@ -97,6 +98,71 @@ class ProfilePinManagerTest {
             val result = manager.removePin(1L, "0000")
             assertTrue(result is PinManagerRemoveResult.Wrong)
             assertEquals(4, (result as PinManagerRemoveResult.Wrong).triesLeft)
+            coVerify(exactly = 0) { profilePinRepository.removePin(any()) }
+        }
+
+    @Test
+    fun OR1_ownerReset_ownerLocked_correctOwnerPin_removesTargetPin() =
+        runTest {
+            val owner = sampleProfile(1L, isLocked = true, isOwner = true)
+            val target = sampleProfile(2L, isLocked = true, isOwner = false)
+            coEvery { profileRepository.get(1L) } returns owner
+            coEvery { profileRepository.get(2L) } returns target
+            coEvery { profilePinRepository.verify(1L, "1234") } returns VerifyResult.Correct
+            coEvery { profilePinRepository.removePin(2L) } returns Unit
+
+            val result = manager.ownerResetPin(1L, "1234", 2L)
+            assertEquals(OwnerResetPinResult.Removed, result)
+            coVerify(exactly = 1) { profilePinRepository.removePin(2L) }
+        }
+
+    @Test
+    fun OR2_ownerReset_ownerLocked_wrongOwnerPin_keepsTargetPin_countsFailure() =
+        runTest {
+            val owner = sampleProfile(1L, isLocked = true, isOwner = true)
+            val target = sampleProfile(2L, isLocked = true, isOwner = false)
+            coEvery { profileRepository.get(1L) } returns owner
+            coEvery { profileRepository.get(2L) } returns target
+            coEvery { profilePinRepository.verify(1L, "0000") } returns VerifyResult.Wrong(4)
+
+            val result = manager.ownerResetPin(1L, "0000", 2L)
+            assertEquals(OwnerResetPinResult.WrongPin(4), result)
+            coVerify(exactly = 0) { profilePinRepository.removePin(any()) }
+        }
+
+    @Test
+    fun OR3_ownerReset_ownerNotLocked_removesTargetPin() =
+        runTest {
+            val owner = sampleProfile(1L, isLocked = false, isOwner = true)
+            val target = sampleProfile(2L, isLocked = true, isOwner = false)
+            coEvery { profileRepository.get(1L) } returns owner
+            coEvery { profileRepository.get(2L) } returns target
+            coEvery { profilePinRepository.removePin(2L) } returns Unit
+
+            val result = manager.ownerResetPin(1L, null, 2L)
+            assertEquals(OwnerResetPinResult.Removed, result)
+            coVerify(exactly = 0) { profilePinRepository.verify(any(), any()) }
+            coVerify(exactly = 1) { profilePinRepository.removePin(2L) }
+        }
+
+    @Test
+    fun OR4_ownerReset_targetIsOwner_isRefused() =
+        runTest {
+            val result = manager.ownerResetPin(1L, "1234", 1L)
+            assertEquals(OwnerResetPinResult.NotAllowed, result)
+            coVerify(exactly = 0) { profilePinRepository.removePin(any()) }
+        }
+
+    @Test
+    fun OR5_ownerReset_callerNotOwner_isRefused() =
+        runTest {
+            val nonOwner = sampleProfile(2L, isLocked = true, isOwner = false)
+            val target = sampleProfile(3L, isLocked = true, isOwner = false)
+            coEvery { profileRepository.get(2L) } returns nonOwner
+            coEvery { profileRepository.get(3L) } returns target
+
+            val result = manager.ownerResetPin(2L, "1234", 3L)
+            assertEquals(OwnerResetPinResult.NotAllowed, result)
             coVerify(exactly = 0) { profilePinRepository.removePin(any()) }
         }
 }

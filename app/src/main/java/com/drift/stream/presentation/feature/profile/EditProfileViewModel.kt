@@ -13,6 +13,7 @@ import com.drift.stream.data.profile.AvatarPhotoStore
 import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.profile.CropState
 import com.drift.stream.domain.profile.DeleteHost
+import com.drift.stream.domain.profile.OwnerResetPinResult
 import com.drift.stream.domain.profile.PinChallenges
 import com.drift.stream.domain.profile.PinManagerChangeResult
 import com.drift.stream.domain.profile.PinManagerRemoveResult
@@ -57,6 +58,7 @@ data class EditProfileUiState(
     val cropBitmap: Bitmap? = null,
     val pinLockEnabled: Boolean = false,
     val pinActionError: Boolean = false,
+    val showResetPinConfirm: Boolean = false,
 )
 
 sealed interface EditProfileEffect {
@@ -98,6 +100,10 @@ sealed interface EditProfileEvent {
     data object RemovePinClicked : EditProfileEvent
 
     data object ResetPinClicked : EditProfileEvent
+
+    data object ResetPinConfirmed : EditProfileEvent
+
+    data object ResetPinDismissed : EditProfileEvent
 }
 
 class AvatarPhotoServices
@@ -269,6 +275,7 @@ class EditProfileViewModel
                 }
 
                 EditProfileEvent.DeleteConfirmed -> {
+                    _uiState.value = _uiState.value.copy(showDeleteDialog = false)
                     handleDelete()
                 }
 
@@ -291,8 +298,20 @@ class EditProfileViewModel
                 EditProfileEvent.SetPinClicked,
                 EditProfileEvent.ChangePinClicked,
                 EditProfileEvent.RemovePinClicked,
-                EditProfileEvent.ResetPinClicked,
                 -> {
+                    handlePinAction(event)
+                }
+
+                EditProfileEvent.ResetPinClicked -> {
+                    _uiState.value = _uiState.value.copy(showResetPinConfirm = true)
+                }
+
+                EditProfileEvent.ResetPinDismissed -> {
+                    _uiState.value = _uiState.value.copy(showResetPinConfirm = false)
+                }
+
+                EditProfileEvent.ResetPinConfirmed -> {
+                    _uiState.value = _uiState.value.copy(showResetPinConfirm = false)
                     handlePinAction(event)
                 }
             }
@@ -302,38 +321,18 @@ class EditProfileViewModel
             val id = targetProfileId ?: return
             viewModelScope.launch {
                 _uiState.value = _uiState.value.copy(pinActionError = false)
-                when (event) {
-                    EditProfileEvent.SetPinClicked -> {
-                        val result = pinOps.challenges.ask(PinRequest.Create)
-                        if (result is PinResult.Created) {
-                            val setResult = pinOps.manager.setPin(id, result.pin)
-                            if (setResult !is PinManagerSetResult.Set) {
-                                _uiState.value = _uiState.value.copy(pinActionError = true)
-                            }
-                        }
+                when (runPinAction(event, id, currentProfiles, pinOps)) {
+                    PinActionResult.ResetSuccess -> {
+                        _uiState.value = _uiState.value.copy(pinLockEnabled = false)
                     }
 
-                    EditProfileEvent.ChangePinClicked -> {
-                        val verifyResult = pinOps.challenges.ask(PinRequest.Verify(id, PinPurpose.CurrentPinForChange))
-                        if (verifyResult !is PinResult.Verified) return@launch
-                        val createResult = pinOps.challenges.ask(PinRequest.Create)
-                        if (createResult !is PinResult.Created) return@launch
-                        val changeResult = pinOps.manager.changePin(id, verifyResult.pin, createResult.pin)
-                        if (changeResult !is PinManagerChangeResult.Changed) {
-                            _uiState.value = _uiState.value.copy(pinActionError = true)
-                        }
+                    PinActionResult.Failed -> {
+                        _uiState.value = _uiState.value.copy(pinActionError = true)
                     }
 
-                    EditProfileEvent.RemovePinClicked -> {
-                        val verifyResult = pinOps.challenges.ask(PinRequest.Verify(id, PinPurpose.CurrentPinForRemove))
-                        if (verifyResult !is PinResult.Verified) return@launch
-                        val removeResult = pinOps.manager.removePin(id, verifyResult.pin)
-                        if (removeResult !is PinManagerRemoveResult.Removed) {
-                            _uiState.value = _uiState.value.copy(pinActionError = true)
-                        }
-                    }
-
-                    else -> {}
+                    PinActionResult.Success,
+                    PinActionResult.NoOp,
+                    -> {}
                 }
             }
         }
@@ -422,15 +421,24 @@ class EditProfileViewModel
 
                 viewModelScope.launch {
                     try {
+                        val owner = currentProfiles.find { it.isOwner }
+                        if (owner?.isLocked == true) {
+                            val pinResult =
+                                pinOps.challenges.ask(PinRequest.Verify(owner.id, PinPurpose.DeleteProfile))
+                            if (pinResult !is PinResult.Verified) {
+                                isDeleting = false
+                                _uiState.value = _uiState.value.copy(isDeleting = false)
+                                return@launch
+                            }
+                        }
                         if (deleteHost == DeleteHost.Picker &&
                             currentProfile.id == activeProfileHolder.activeProfileId.value
                         ) {
-                            val owner =
-                                currentProfiles.firstOrNull { it.isOwner }
-                                    ?: profileRepository.ensureDefaultProfile()
-                            if (activeProfileHolder.setActive(owner.id)) {
+                            val fallbackOwner =
+                                owner ?: profileRepository.ensureDefaultProfile()
+                            if (activeProfileHolder.setActive(fallbackOwner.id)) {
                                 withTimeoutOrNull(CHOOSE_TIMEOUT_MS) {
-                                    activeProfileHolder.activeProfileId.first { it == owner.id }
+                                    activeProfileHolder.activeProfileId.first { it == fallbackOwner.id }
                                 }
                             }
                         }
@@ -553,3 +561,94 @@ private suspend fun preparePhotoForSave(
         profile.avatarPhotoStamp
     }
 }
+
+private enum class PinActionResult {
+    Success,
+    ResetSuccess,
+    Failed,
+    NoOp,
+}
+
+private suspend fun runSetPin(
+    id: Long,
+    pinOps: ProfilePinOps,
+): PinActionResult {
+    val result = pinOps.challenges.ask(PinRequest.Create)
+    if (result !is PinResult.Created) return PinActionResult.NoOp
+    return if (pinOps.manager.setPin(id, result.pin) is PinManagerSetResult.Set) {
+        PinActionResult.Success
+    } else {
+        PinActionResult.Failed
+    }
+}
+
+private suspend fun runChangePin(
+    id: Long,
+    pinOps: ProfilePinOps,
+): PinActionResult {
+    val verifyResult = pinOps.challenges.ask(PinRequest.Verify(id, PinPurpose.CurrentPinForChange))
+    val createResult =
+        if (verifyResult is PinResult.Verified) {
+            pinOps.challenges.ask(PinRequest.Create)
+        } else {
+            null
+        }
+    if (verifyResult !is PinResult.Verified || createResult !is PinResult.Created) {
+        return PinActionResult.NoOp
+    }
+    return if (pinOps.manager.changePin(id, verifyResult.pin, createResult.pin) is PinManagerChangeResult.Changed) {
+        PinActionResult.Success
+    } else {
+        PinActionResult.Failed
+    }
+}
+
+private suspend fun runRemovePin(
+    id: Long,
+    pinOps: ProfilePinOps,
+): PinActionResult {
+    val verifyResult = pinOps.challenges.ask(PinRequest.Verify(id, PinPurpose.CurrentPinForRemove))
+    if (verifyResult !is PinResult.Verified) return PinActionResult.NoOp
+    return if (pinOps.manager.removePin(id, verifyResult.pin) is PinManagerRemoveResult.Removed) {
+        PinActionResult.Success
+    } else {
+        PinActionResult.Failed
+    }
+}
+
+private suspend fun runResetPin(
+    id: Long,
+    profiles: List<Profile>,
+    pinOps: ProfilePinOps,
+): PinActionResult {
+    val owner = profiles.find { it.isOwner }
+    val verifyResult =
+        if (owner?.isLocked == true) {
+            pinOps.challenges.ask(PinRequest.Verify(owner.id, PinPurpose.OwnerReset))
+        } else {
+            null
+        }
+    if (owner == null || (owner.isLocked && verifyResult !is PinResult.Verified)) {
+        return PinActionResult.NoOp
+    }
+    val ownerPin = (verifyResult as? PinResult.Verified)?.pin
+    return if (pinOps.manager.ownerResetPin(owner.id, ownerPin, id) is OwnerResetPinResult.Removed) {
+        PinActionResult.ResetSuccess
+    } else {
+        PinActionResult.Failed
+    }
+}
+
+private suspend fun runPinAction(
+    event: EditProfileEvent,
+    id: Long,
+    profiles: List<Profile>,
+    pinOps: ProfilePinOps,
+): PinActionResult =
+    when (event) {
+        EditProfileEvent.SetPinClicked -> runSetPin(id, pinOps)
+        EditProfileEvent.ChangePinClicked -> runChangePin(id, pinOps)
+        EditProfileEvent.RemovePinClicked -> runRemovePin(id, pinOps)
+        EditProfileEvent.ResetPinConfirmed -> runResetPin(id, profiles, pinOps)
+        else -> PinActionResult.NoOp
+    }

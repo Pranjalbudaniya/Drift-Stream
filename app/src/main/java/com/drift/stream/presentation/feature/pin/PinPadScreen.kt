@@ -49,6 +49,7 @@ import com.drift.stream.domain.profile.PIN_MAX_LENGTH
 import com.drift.stream.domain.profile.PIN_MIN_LENGTH
 import com.drift.stream.domain.profile.PendingPin
 import com.drift.stream.domain.profile.pinDotSlots
+import com.drift.stream.presentation.common.NexusTextButton
 import com.drift.stream.presentation.common.ProfileAvatarFor
 import com.drift.stream.presentation.theme.NexusTheme
 import java.util.Locale
@@ -63,8 +64,6 @@ private const val SECONDS_PER_MINUTE = 60
 private const val DISABLED_ALPHA = 0.38f
 private const val DIGIT_BG_ALPHA_ENABLED = 0.6f
 private const val DIGIT_BG_ALPHA_DISABLED = 0.2f
-private const val PREVIEW_WRONG_TRIES = 3
-private const val PREVIEW_LOCKED_SECONDS = 30
 private const val PREVIEW_CREATE_DOT_COUNT = 2
 
 @Composable
@@ -127,42 +126,7 @@ internal fun PinPadContent(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            val currentProfile = uiState.profile
-            if (uiState.titleKind == PinTitleKind.EnterPin && currentProfile != null) {
-                ProfileAvatarFor(
-                    profile = currentProfile,
-                    size = PIN_AVATAR_SIZE,
-                )
-                Spacer(modifier = Modifier.height(spacing.sm))
-                Text(
-                    text = uiState.profileName.orEmpty(),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-                Spacer(modifier = Modifier.height(spacing.xs))
-                Text(
-                    text = stringResource(R.string.pin_enter_title),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                Text(
-                    text =
-                        if (uiState.titleKind == PinTitleKind.CreatePin) {
-                            stringResource(R.string.pin_create_title)
-                        } else {
-                            stringResource(R.string.pin_confirm_title)
-                        },
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-                Spacer(modifier = Modifier.height(spacing.xs))
-                Text(
-                    text = stringResource(R.string.pin_choose_length_hint),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            PinHeader(uiState = uiState)
 
             Spacer(modifier = Modifier.height(spacing.lg))
 
@@ -205,43 +169,20 @@ internal fun PinPadContent(
 
             Spacer(modifier = Modifier.height(spacing.sm))
 
-            Box(
-                modifier = Modifier.height(PIN_MESSAGE_HEIGHT),
-                contentAlignment = Alignment.Center,
-            ) {
-                val message = uiState.message
-                if (message != null) {
-                    val text =
-                        when (message) {
-                            is PinMessage.Wrong -> {
-                                pluralStringResource(
-                                    R.plurals.pin_wrong_tries_left,
-                                    message.triesLeft,
-                                    message.triesLeft,
-                                )
-                            }
+            PinMessageView(message = uiState.message)
 
-                            is PinMessage.Locked -> {
-                                val m = message.remainingSeconds / SECONDS_PER_MINUTE
-                                val s = message.remainingSeconds % SECONDS_PER_MINUTE
-                                val formatted = String.format(Locale.US, "%d:%02d", m, s)
-                                stringResource(R.string.pin_locked_countdown, formatted)
-                            }
-
-                            is PinMessage.Mismatch -> {
-                                stringResource(R.string.pin_mismatch)
-                            }
-                        }
+            if (uiState.isVerify) {
+                NexusTextButton(
+                    onClick = { onEvent(PinPadEvent.ForgotPinPressed) },
+                ) {
                     Text(
-                        text = text,
+                        text = stringResource(R.string.pin_forgot_button),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = TextAlign.Center,
                     )
                 }
+            } else {
+                Spacer(modifier = Modifier.height(spacing.md))
             }
-
-            Spacer(modifier = Modifier.height(spacing.md))
 
             PinKeypad(
                 uiState = uiState,
@@ -250,7 +191,7 @@ internal fun PinPadContent(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            if (uiState.titleKind != PinTitleKind.EnterPin) {
+            if (!uiState.isVerify) {
                 Text(
                     text = stringResource(R.string.pin_honest_limit_note),
                     style = MaterialTheme.typography.bodySmall,
@@ -259,6 +200,105 @@ internal fun PinPadContent(
                     modifier = Modifier.padding(horizontal = spacing.md),
                 )
             }
+
+            ForgotPinHost(
+                forgot = uiState.forgot,
+                onEvent = onEvent,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PinHeader(uiState: PinPadUiState) {
+    val spacing = NexusTheme.spacing
+    val currentProfile = uiState.profile
+    val isOwnerPad =
+        uiState.titleKind == PinTitleKind.OwnerResetPin ||
+            uiState.titleKind == PinTitleKind.OwnerDeletePin ||
+            uiState.titleKind == PinTitleKind.OwnerManagePin
+    if ((uiState.titleKind == PinTitleKind.EnterPin || isOwnerPad) && currentProfile != null) {
+        ProfileAvatarFor(
+            profile = currentProfile,
+            size = PIN_AVATAR_SIZE,
+        )
+        Spacer(modifier = Modifier.height(spacing.sm))
+        Text(
+            text = uiState.profileName.orEmpty(),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Spacer(modifier = Modifier.height(spacing.xs))
+        val subtitleRes =
+            when (uiState.titleKind) {
+                PinTitleKind.OwnerResetPin -> R.string.pin_enter_owner_reset_title
+                PinTitleKind.OwnerDeletePin -> R.string.pin_enter_owner_delete_title
+                PinTitleKind.OwnerManagePin -> R.string.pin_enter_owner_manage_title
+                else -> R.string.pin_enter_title
+            }
+        Text(
+            text = stringResource(subtitleRes),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    } else {
+        Text(
+            text =
+                if (uiState.titleKind == PinTitleKind.CreatePin) {
+                    stringResource(R.string.pin_create_title)
+                } else {
+                    stringResource(R.string.pin_confirm_title)
+                },
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Spacer(modifier = Modifier.height(spacing.xs))
+        Text(
+            text = stringResource(R.string.pin_choose_length_hint),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun PinMessageView(
+    message: PinMessage?,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.height(PIN_MESSAGE_HEIGHT),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (message != null) {
+            val text =
+                when (message) {
+                    is PinMessage.Wrong -> {
+                        pluralStringResource(
+                            R.plurals.pin_wrong_tries_left,
+                            message.triesLeft,
+                            message.triesLeft,
+                        )
+                    }
+
+                    is PinMessage.Locked -> {
+                        val m = message.remainingSeconds / SECONDS_PER_MINUTE
+                        val s = message.remainingSeconds % SECONDS_PER_MINUTE
+                        val formatted = String.format(Locale.US, "%d:%02d", m, s)
+                        stringResource(R.string.pin_locked_countdown, formatted)
+                    }
+
+                    is PinMessage.Mismatch -> {
+                        stringResource(R.string.pin_mismatch)
+                    }
+                }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
@@ -475,45 +515,6 @@ internal fun PinPad6DigitsPreview() {
                     profile = samplePreviewProfile,
                     profileName = "Asha",
                     dotCount = 6,
-                ),
-            onEvent = {},
-        )
-    }
-}
-
-@Preview(name = "PinPad - Wrong Light", showBackground = true)
-@Preview(name = "PinPad - Wrong Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
-@Composable
-internal fun PinPadWrongPreview() {
-    NexusTheme {
-        PinPadContent(
-            uiState =
-                PinPadUiState(
-                    titleKind = PinTitleKind.EnterPin,
-                    profile = samplePreviewProfile,
-                    profileName = "Asha",
-                    dotCount = 0,
-                    message = PinMessage.Wrong(PREVIEW_WRONG_TRIES),
-                ),
-            onEvent = {},
-        )
-    }
-}
-
-@Preview(name = "PinPad - Locked Light", showBackground = true)
-@Preview(name = "PinPad - Locked Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
-@Composable
-internal fun PinPadLockedPreview() {
-    NexusTheme {
-        PinPadContent(
-            uiState =
-                PinPadUiState(
-                    titleKind = PinTitleKind.EnterPin,
-                    profile = samplePreviewProfile,
-                    profileName = "Asha",
-                    dotCount = 0,
-                    message = PinMessage.Locked(PREVIEW_LOCKED_SECONDS),
-                    locked = true,
                 ),
             onEvent = {},
         )

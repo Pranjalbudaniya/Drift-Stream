@@ -5,7 +5,9 @@ import com.drift.stream.data.profile.ActiveProfileHolder
 import com.drift.stream.data.profile.AvatarPhotoPipeline
 import com.drift.stream.data.profile.AvatarPhotoStore
 import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.profile.CropState
 import com.drift.stream.domain.profile.DeleteHost
+import com.drift.stream.domain.profile.OwnerResetPinResult
 import com.drift.stream.domain.profile.PinChallenges
 import com.drift.stream.domain.profile.PinManagerChangeResult
 import com.drift.stream.domain.profile.PinManagerRemoveResult
@@ -624,5 +626,139 @@ class EditProfileViewModelTest {
 
             coVerify(exactly = 0) { profilePinManager.changePin(any(), any(), any()) }
             assertFalse(viewModel.uiState.value.pinActionError)
+        }
+
+    @Test
+    fun EV21_ownerReset_asksOwnerPin_thenRemovesTargetPin() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Owner", isLocked = true)
+            val target = sampleProfile(2L, "Asha", isLocked = true)
+            profilesFlow.value = listOf(owner, target)
+            coEvery { profileRepository.get(2L) } returns target
+            coEvery { pinChallenges.ask(PinRequest.Verify(1L, PinPurpose.OwnerReset)) } returns
+                PinResult.Verified("9999")
+            coEvery { profilePinManager.ownerResetPin(1L, "9999", 2L) } returns
+                OwnerResetPinResult.Removed
+
+            val viewModel = createViewModel(2L)
+            testScheduler.advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.pinLockEnabled)
+
+            viewModel.onEvent(EditProfileEvent.ResetPinClicked)
+            assertTrue(viewModel.uiState.value.showResetPinConfirm)
+
+            viewModel.onEvent(EditProfileEvent.ResetPinConfirmed)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Verify(1L, PinPurpose.OwnerReset)) }
+            coVerify(exactly = 1) { profilePinManager.ownerResetPin(1L, "9999", 2L) }
+            assertFalse(viewModel.uiState.value.pinLockEnabled)
+            assertFalse(viewModel.uiState.value.showResetPinConfirm)
+        }
+
+    @Test
+    fun EV22_ownerReset_ownerNotLocked_noChallenge() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Owner", isLocked = false)
+            val target = sampleProfile(2L, "Asha", isLocked = true)
+            profilesFlow.value = listOf(owner, target)
+            coEvery { profileRepository.get(2L) } returns target
+            coEvery { profilePinManager.ownerResetPin(1L, null, 2L) } returns
+                OwnerResetPinResult.Removed
+
+            val viewModel = createViewModel(2L)
+            testScheduler.advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.pinLockEnabled)
+
+            viewModel.onEvent(EditProfileEvent.ResetPinConfirmed)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 0) { pinChallenges.ask(any()) }
+            coVerify(exactly = 1) { profilePinManager.ownerResetPin(1L, null, 2L) }
+            assertFalse(viewModel.uiState.value.pinLockEnabled)
+        }
+
+    @Test
+    fun EV23_ownerReset_cancelledAtOwnerPin_keepsPin() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Owner", isLocked = true)
+            val target = sampleProfile(2L, "Asha", isLocked = true)
+            profilesFlow.value = listOf(owner, target)
+            coEvery { profileRepository.get(2L) } returns target
+            coEvery { pinChallenges.ask(PinRequest.Verify(1L, PinPurpose.OwnerReset)) } returns
+                PinResult.Cancelled
+
+            val viewModel = createViewModel(2L)
+            testScheduler.advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.pinLockEnabled)
+
+            viewModel.onEvent(EditProfileEvent.ResetPinConfirmed)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Verify(1L, PinPurpose.OwnerReset)) }
+            coVerify(exactly = 0) { profilePinManager.ownerResetPin(any(), any(), any()) }
+            assertTrue(viewModel.uiState.value.pinLockEnabled)
+        }
+
+    @Test
+    fun EV24_delete_ownerLocked_requiresOwnerPin_afterConfirm() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Owner", isLocked = true)
+            val target = sampleProfile(2L, "Asha", isLocked = false)
+            profilesFlow.value = listOf(owner, target)
+            coEvery { profileRepository.get(2L) } returns target
+            coEvery { pinChallenges.ask(PinRequest.Verify(1L, PinPurpose.DeleteProfile)) } returns
+                PinResult.Verified("9999")
+            coEvery { profileRepository.delete(2L) } returns DeleteResult.Deleted
+
+            val viewModel = createViewModel(2L, host = DeleteHost.Picker)
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(EditProfileEvent.DeleteConfirmed)
+            testScheduler.advanceUntilIdle()
+
+            coVerifyOrder {
+                pinChallenges.ask(PinRequest.Verify(1L, PinPurpose.DeleteProfile))
+                profileRepository.delete(2L)
+            }
+        }
+
+    @Test
+    fun EV25_delete_ownerLocked_pinCancelled_doesNotDelete() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Owner", isLocked = true)
+            val target = sampleProfile(2L, "Asha", isLocked = false)
+            profilesFlow.value = listOf(owner, target)
+            coEvery { profileRepository.get(2L) } returns target
+            coEvery { pinChallenges.ask(PinRequest.Verify(1L, PinPurpose.DeleteProfile)) } returns
+                PinResult.Cancelled
+
+            val viewModel = createViewModel(2L, host = DeleteHost.Picker)
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(EditProfileEvent.DeleteConfirmed)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Verify(1L, PinPurpose.DeleteProfile)) }
+            coVerify(exactly = 0) { profileRepository.delete(any()) }
+        }
+
+    @Test
+    fun EV26_delete_ownerNotLocked_noPinChallenge() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Owner", isLocked = false)
+            val target = sampleProfile(2L, "Asha", isLocked = false)
+            profilesFlow.value = listOf(owner, target)
+            coEvery { profileRepository.get(2L) } returns target
+            coEvery { profileRepository.delete(2L) } returns DeleteResult.Deleted
+
+            val viewModel = createViewModel(2L, host = DeleteHost.Picker)
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(EditProfileEvent.DeleteConfirmed)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 0) { pinChallenges.ask(any()) }
+            coVerify(exactly = 1) { profileRepository.delete(2L) }
         }
 }

@@ -9,7 +9,7 @@ import com.drift.stream.data.local.db.entity.ProfileEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
-interface ProfileDao {
+interface ProfileDao : ProfilePinQueries {
     @Query("SELECT * FROM profiles ORDER BY sortOrder ASC, id ASC")
     fun observeAll(): Flow<List<ProfileEntity>>
 

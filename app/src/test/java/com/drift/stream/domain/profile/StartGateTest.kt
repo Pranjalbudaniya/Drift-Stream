@@ -20,7 +20,7 @@ class StartGateTest {
             avatarEmoji = null,
             isOwner = owner,
             needsSetup = needsSetup,
-            pinHash = if (locked) "pin_hash" else null,
+            isLocked = locked,
             createdAt = 1000L,
             lastUsedAt = 1000L,
             sortOrder = 0,

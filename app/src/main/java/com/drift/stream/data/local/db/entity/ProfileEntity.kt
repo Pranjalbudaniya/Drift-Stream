@@ -19,4 +19,6 @@ data class ProfileEntity(
     val sortOrder: Int,
     val avatarCustomColor: Int? = null,
     val avatarPhotoStamp: Long? = null,
+    val pinFailedAttempts: Int? = null,
+    val pinLockedUntil: Long? = null,
 )

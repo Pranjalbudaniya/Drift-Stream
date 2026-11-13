@@ -7,15 +7,10 @@ data class Profile(
     val avatarEmoji: String?,
     val isOwner: Boolean,
     val needsSetup: Boolean,
-    val pinHash: String? = null,
-    val pinSalt: String? = null,
-    val pinIterations: Int? = null,
     val createdAt: Long,
     val lastUsedAt: Long,
     val sortOrder: Int,
     val avatarCustomColor: Int? = null,
     val avatarPhotoStamp: Long? = null,
-) {
-    val isLocked: Boolean
-        get() = pinHash != null
-}
+    val isLocked: Boolean = false,
+)

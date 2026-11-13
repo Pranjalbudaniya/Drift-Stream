@@ -19,6 +19,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -95,4 +96,54 @@ class ProfileRepositoryAvatarTest {
             repo.setAvatarPhoto(profileId = 1L, stamp = null)
             coVerify(exactly = 1) { profileDao.updateAvatarPhotoStamp(1L, null) }
         }
+
+    @Test
+    fun PR3_toDomain_isLockedWhenPinHashPresent() {
+        val entityLocked =
+            ProfileEntity(
+                id = 1L,
+                name = "Locked",
+                avatarColor = 0,
+                avatarEmoji = null,
+                isOwner = false,
+                needsSetup = false,
+                pinHash = "some_hash",
+                pinSalt = "some_salt",
+                pinIterations = 1000,
+                createdAt = 1000L,
+                lastUsedAt = 1000L,
+                sortOrder = 0,
+            )
+        val entityUnlocked = entityLocked.copy(pinHash = null)
+
+        assertTrue(entityLocked.toDomain().isLocked)
+        assertFalse(entityUnlocked.toDomain().isLocked)
+    }
+
+    @Test
+    fun PR4_profileToString_containsNoPinMaterial() {
+        val entity =
+            ProfileEntity(
+                id = 1L,
+                name = "SecretUser",
+                avatarColor = 0,
+                avatarEmoji = null,
+                isOwner = false,
+                needsSetup = false,
+                pinHash = "SECRETHASH",
+                pinSalt = "SECRETSALT",
+                pinIterations = 600000,
+                pinFailedAttempts = 5,
+                pinLockedUntil = 123456789L,
+                createdAt = 1000L,
+                lastUsedAt = 1000L,
+                sortOrder = 0,
+            )
+        val profileString = entity.toDomain().toString()
+
+        assertFalse(profileString.contains("SECRETHASH"))
+        assertFalse(profileString.contains("SECRETSALT"))
+        assertFalse(profileString.contains("600000"))
+        assertFalse(profileString.contains("123456789"))
+    }
 }

@@ -118,15 +118,21 @@ class ProfileRepositoryImpl
 
         override suspend fun update(profile: Profile): UpdateResult =
             withContext(ioDispatcher) {
-                if (profileDao.getById(profile.id) == null) {
-                    return@withContext UpdateResult.NotFound
-                }
+                val existing = profileDao.getById(profile.id) ?: return@withContext UpdateResult.NotFound
                 val otherNames = profileDao.getAll().filter { it.id != profile.id }.map { it.name }
                 when (val validation = ProfileNameRules.validate(profile.name, otherNames)) {
                     is NameResult.Valid -> {
-                        val updated = profile.copy(name = validation.trimmedName)
-                        profileDao.update(updated.toEntity())
-                        UpdateResult.Updated(updated)
+                        val updated =
+                            existing.copy(
+                                name = validation.trimmedName,
+                                avatarColor = profile.avatarColor,
+                                avatarEmoji = profile.avatarEmoji,
+                                avatarCustomColor = profile.avatarCustomColor,
+                                avatarPhotoStamp = profile.avatarPhotoStamp,
+                                sortOrder = profile.sortOrder,
+                            )
+                        profileDao.update(updated)
+                        UpdateResult.Updated(updated.toDomain())
                     }
 
                     else -> {
@@ -206,14 +212,12 @@ fun ProfileEntity.toDomain(): Profile =
         avatarEmoji = avatarEmoji,
         isOwner = isOwner,
         needsSetup = needsSetup,
-        pinHash = pinHash,
-        pinSalt = pinSalt,
-        pinIterations = pinIterations,
         createdAt = createdAt,
         lastUsedAt = lastUsedAt,
         sortOrder = sortOrder,
         avatarCustomColor = avatarCustomColor,
         avatarPhotoStamp = avatarPhotoStamp,
+        isLocked = pinHash != null,
     )
 
 fun Profile.toEntity(): ProfileEntity =
@@ -224,9 +228,11 @@ fun Profile.toEntity(): ProfileEntity =
         avatarEmoji = avatarEmoji,
         isOwner = isOwner,
         needsSetup = needsSetup,
-        pinHash = pinHash,
-        pinSalt = pinSalt,
-        pinIterations = pinIterations,
+        pinHash = null,
+        pinSalt = null,
+        pinIterations = null,
+        pinFailedAttempts = null,
+        pinLockedUntil = null,
         createdAt = createdAt,
         lastUsedAt = lastUsedAt,
         sortOrder = sortOrder,

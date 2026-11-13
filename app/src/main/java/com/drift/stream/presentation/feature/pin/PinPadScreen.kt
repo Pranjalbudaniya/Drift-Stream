@@ -1,0 +1,510 @@
+package com.drift.stream.presentation.feature.pin
+
+import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.drift.stream.R
+import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.profile.PIN_MAX_LENGTH
+import com.drift.stream.domain.profile.PIN_MIN_LENGTH
+import com.drift.stream.domain.profile.PendingPin
+import com.drift.stream.presentation.common.ProfileAvatarFor
+import com.drift.stream.presentation.theme.NexusTheme
+import java.util.Locale
+
+val PIN_KEY_SIZE = 72.dp
+val PIN_AVATAR_SIZE = 64.dp
+val PIN_DOT_SIZE = 14.dp
+val PIN_DOT_SPACING = 12.dp
+val PIN_MESSAGE_HEIGHT = 24.dp
+val PIN_ROW_SPACING = 12.dp
+const val PIN_TOTAL_DOTS = 6
+private const val SECONDS_PER_MINUTE = 60
+private const val DISABLED_ALPHA = 0.38f
+private const val DIGIT_BG_ALPHA_ENABLED = 0.6f
+private const val DIGIT_BG_ALPHA_DISABLED = 0.2f
+private const val PREVIEW_ENTERING_DOT_COUNT = 3
+private const val PREVIEW_WRONG_TRIES = 3
+private const val PREVIEW_LOCKED_SECONDS = 30
+private const val PREVIEW_CREATE_DOT_COUNT = 2
+private const val PREVIEW_CONFIRM_DOT_COUNT = 4
+
+@Composable
+fun PinPadScreen(
+    pendingPin: PendingPin,
+    modifier: Modifier = Modifier,
+    viewModel: PinPadViewModel = hiltViewModel(key = "pin-${pendingPin.id}"),
+) {
+    LaunchedEffect(pendingPin.id) {
+        viewModel.initialize(pendingPin)
+    }
+
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    BackHandler {
+        viewModel.onEvent(PinPadEvent.Cancel)
+    }
+
+    PinPadContent(
+        uiState = uiState,
+        onEvent = viewModel::onEvent,
+        modifier = modifier,
+    )
+}
+
+@Composable
+internal fun PinPadContent(
+    uiState: PinPadUiState,
+    onEvent: (PinPadEvent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = NexusTheme.spacing
+
+    Surface(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .safeDrawingPadding(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = spacing.lg, vertical = spacing.md),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                IconButton(onClick = { onEvent(PinPadEvent.Cancel) }) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.pin_cancel_description),
+                        tint = MaterialTheme.colorScheme.onBackground,
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            val currentProfile = uiState.profile
+            if (uiState.titleKind == PinTitleKind.EnterPin && currentProfile != null) {
+                ProfileAvatarFor(
+                    profile = currentProfile,
+                    size = PIN_AVATAR_SIZE,
+                )
+                Spacer(modifier = Modifier.height(spacing.sm))
+                Text(
+                    text = uiState.profileName.orEmpty(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Spacer(modifier = Modifier.height(spacing.xs))
+                Text(
+                    text = stringResource(R.string.pin_enter_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    text =
+                        if (uiState.titleKind == PinTitleKind.CreatePin) {
+                            stringResource(R.string.pin_create_title)
+                        } else {
+                            stringResource(R.string.pin_confirm_title)
+                        },
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+                Spacer(modifier = Modifier.height(spacing.xs))
+                Text(
+                    text = stringResource(R.string.pin_choose_length_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(spacing.lg))
+
+            PinDotsRow(dotCount = uiState.dotCount)
+
+            Spacer(modifier = Modifier.height(spacing.sm))
+
+            PinMessageLine(message = uiState.message)
+
+            Spacer(modifier = Modifier.height(spacing.md))
+
+            PinKeypad(
+                uiState = uiState,
+                onEvent = onEvent,
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            if (uiState.titleKind != PinTitleKind.EnterPin) {
+                Text(
+                    text = stringResource(R.string.pin_honest_limit_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = spacing.md),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PinDotsRow(
+    dotCount: Int,
+    modifier: Modifier = Modifier,
+) {
+    val dotsDesc = stringResource(R.string.pin_dots_description, dotCount)
+    Row(
+        modifier =
+            modifier.semantics {
+                contentDescription = dotsDesc
+            },
+        horizontalArrangement = Arrangement.spacedBy(PIN_DOT_SPACING),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        for (i in 0 until PIN_TOTAL_DOTS) {
+            val filled = i < dotCount
+            Box(
+                modifier =
+                    Modifier
+                        .size(PIN_DOT_SIZE)
+                        .clip(CircleShape)
+                        .then(
+                            if (filled) {
+                                Modifier.background(MaterialTheme.colorScheme.primary)
+                            } else {
+                                Modifier.border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outline,
+                                    shape = CircleShape,
+                                )
+                            },
+                        ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PinMessageLine(
+    message: PinMessage?,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.height(PIN_MESSAGE_HEIGHT),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (message != null) {
+            val text =
+                when (message) {
+                    is PinMessage.Wrong -> {
+                        pluralStringResource(
+                            R.plurals.pin_wrong_tries_left,
+                            message.triesLeft,
+                            message.triesLeft,
+                        )
+                    }
+
+                    is PinMessage.Locked -> {
+                        val m = message.remainingSeconds / SECONDS_PER_MINUTE
+                        val s = message.remainingSeconds % SECONDS_PER_MINUTE
+                        val formatted = String.format(Locale.US, "%d:%02d", m, s)
+                        stringResource(R.string.pin_locked_countdown, formatted)
+                    }
+
+                    is PinMessage.Mismatch -> {
+                        stringResource(R.string.pin_mismatch)
+                    }
+                }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PinKeypad(
+    uiState: PinPadUiState,
+    onEvent: (PinPadEvent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val keysDisabled = uiState.busy || uiState.locked
+    val digitEnabled = !keysDisabled && uiState.dotCount < PIN_MAX_LENGTH
+    val backspaceEnabled = !keysDisabled && uiState.dotCount > 0
+    val confirmEnabled = !keysDisabled && uiState.dotCount >= PIN_MIN_LENGTH
+
+    val rows =
+        listOf(
+            listOf('1', '2', '3'),
+            listOf('4', '5', '6'),
+            listOf('7', '8', '9'),
+        )
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(PIN_ROW_SPACING),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        rows.forEach { rowDigits ->
+            Row(horizontalArrangement = Arrangement.spacedBy(PIN_ROW_SPACING)) {
+                rowDigits.forEach { digit ->
+                    PinKeyButton(
+                        enabled = digitEnabled,
+                        contentDescription = digit.toString(),
+                        backgroundColor =
+                            MaterialTheme.colorScheme.surfaceVariant.copy(
+                                alpha = if (digitEnabled) DIGIT_BG_ALPHA_ENABLED else DIGIT_BG_ALPHA_DISABLED,
+                            ),
+                        onClick = { onEvent(PinPadEvent.DigitPressed(digit)) },
+                    ) {
+                        Text(
+                            text = digit.toString(),
+                            style = MaterialTheme.typography.titleLarge,
+                            color =
+                                if (digitEnabled) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
+                                },
+                        )
+                    }
+                }
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(PIN_ROW_SPACING)) {
+            PinKeyButton(
+                enabled = backspaceEnabled,
+                contentDescription = stringResource(R.string.pin_backspace_description),
+                onClick = { onEvent(PinPadEvent.Backspace) },
+            ) {
+                Text(
+                    text = "⌫",
+                    style = MaterialTheme.typography.titleLarge,
+                    color =
+                        if (backspaceEnabled) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
+                        },
+                )
+            }
+            PinKeyButton(
+                enabled = digitEnabled,
+                contentDescription = '0'.toString(),
+                backgroundColor =
+                    MaterialTheme.colorScheme.surfaceVariant.copy(
+                        alpha = if (digitEnabled) DIGIT_BG_ALPHA_ENABLED else DIGIT_BG_ALPHA_DISABLED,
+                    ),
+                onClick = { onEvent(PinPadEvent.DigitPressed('0')) },
+            ) {
+                Text(
+                    text = "0",
+                    style = MaterialTheme.typography.titleLarge,
+                    color =
+                        if (digitEnabled) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
+                        },
+                )
+            }
+            PinKeyButton(
+                enabled = confirmEnabled,
+                contentDescription = stringResource(R.string.pin_confirm_description),
+                onClick = { onEvent(PinPadEvent.Confirm) },
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint =
+                        if (confirmEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
+                        },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PinKeyButton(
+    enabled: Boolean,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    backgroundColor: Color = Color.Transparent,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier =
+            modifier
+                .size(PIN_KEY_SIZE)
+                .clip(CircleShape)
+                .background(backgroundColor)
+                .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                .semantics {
+                    role = Role.Button
+                    this.contentDescription = contentDescription
+                },
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
+
+private val samplePreviewProfile =
+    Profile(
+        id = 1L,
+        name = "Asha",
+        avatarColor = 2,
+        avatarEmoji = "🦊",
+        isOwner = false,
+        needsSetup = false,
+        createdAt = 1000L,
+        lastUsedAt = 1000L,
+        sortOrder = 0,
+    )
+
+@Preview(name = "PinPad - Entering Light", showBackground = true)
+@Preview(name = "PinPad - Entering Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+internal fun PinPadEnteringPreview() {
+    NexusTheme {
+        PinPadContent(
+            uiState =
+                PinPadUiState(
+                    titleKind = PinTitleKind.EnterPin,
+                    profile = samplePreviewProfile,
+                    profileName = "Asha",
+                    dotCount = PREVIEW_ENTERING_DOT_COUNT,
+                ),
+            onEvent = {},
+        )
+    }
+}
+
+@Preview(name = "PinPad - Wrong Light", showBackground = true)
+@Preview(name = "PinPad - Wrong Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+internal fun PinPadWrongPreview() {
+    NexusTheme {
+        PinPadContent(
+            uiState =
+                PinPadUiState(
+                    titleKind = PinTitleKind.EnterPin,
+                    profile = samplePreviewProfile,
+                    profileName = "Asha",
+                    dotCount = 0,
+                    message = PinMessage.Wrong(PREVIEW_WRONG_TRIES),
+                ),
+            onEvent = {},
+        )
+    }
+}
+
+@Preview(name = "PinPad - Locked Light", showBackground = true)
+@Preview(name = "PinPad - Locked Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+internal fun PinPadLockedPreview() {
+    NexusTheme {
+        PinPadContent(
+            uiState =
+                PinPadUiState(
+                    titleKind = PinTitleKind.EnterPin,
+                    profile = samplePreviewProfile,
+                    profileName = "Asha",
+                    dotCount = 0,
+                    message = PinMessage.Locked(PREVIEW_LOCKED_SECONDS),
+                    locked = true,
+                ),
+            onEvent = {},
+        )
+    }
+}
+
+@Preview(name = "PinPad - Create Light", showBackground = true)
+@Preview(name = "PinPad - Create Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+internal fun PinPadCreatePreview() {
+    NexusTheme {
+        PinPadContent(
+            uiState =
+                PinPadUiState(
+                    titleKind = PinTitleKind.CreatePin,
+                    dotCount = PREVIEW_CREATE_DOT_COUNT,
+                ),
+            onEvent = {},
+        )
+    }
+}
+
+@Preview(name = "PinPad - Confirm Light", showBackground = true)
+@Preview(name = "PinPad - Confirm Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+internal fun PinPadConfirmPreview() {
+    NexusTheme {
+        PinPadContent(
+            uiState =
+                PinPadUiState(
+                    titleKind = PinTitleKind.ConfirmPin,
+                    dotCount = PREVIEW_CONFIRM_DOT_COUNT,
+                ),
+            onEvent = {},
+        )
+    }
+}

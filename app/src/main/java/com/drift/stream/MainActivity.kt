@@ -11,6 +11,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import com.drift.stream.data.remote.addon.AddonUrlBuilder
+import com.drift.stream.domain.profile.PinChallenges
 import com.drift.stream.presentation.common.OneShot
 import com.drift.stream.presentation.feature.player.PlaybackSessionHolder
 import com.drift.stream.presentation.navigation.AppGate
@@ -31,6 +32,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var playbackSessionHolder: PlaybackSessionHolder
+
+    @Inject
+    lateinit var pinChallenges: PinChallenges
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,6 +59,7 @@ class MainActivity : ComponentActivity() {
                                 openDownloadsHolder = openDownloadsHolder,
                                 playbackSessionHolder = playbackSessionHolder,
                                 gateViewModel = gateViewModel,
+                                pinChallenges = pinChallenges,
                             )
                         }
                     }

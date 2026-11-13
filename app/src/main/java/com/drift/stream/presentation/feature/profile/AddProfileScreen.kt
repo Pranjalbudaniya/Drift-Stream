@@ -30,6 +30,9 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.drift.stream.R
 import com.drift.stream.presentation.common.NexusIconButton
+import com.drift.stream.presentation.feature.pin.PinOfferDialog
+import com.drift.stream.presentation.feature.pin.PinOfferEvent
+import com.drift.stream.presentation.feature.pin.PinOfferState
 import com.drift.stream.presentation.theme.NexusTheme
 
 @Composable
@@ -41,6 +44,7 @@ fun AddProfileScreen(
     viewModel: AddProfileViewModel = hiltViewModel(key = "add_profile_$formKey"),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val pinOffer by viewModel.pinOffer.collectAsStateWithLifecycle()
     val croppingBitmap by viewModel.croppingBitmap.collectAsStateWithLifecycle()
     var isEmojiPickerOpen by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
@@ -66,6 +70,14 @@ fun AddProfileScreen(
                             .makeText(
                                 context,
                                 context.getString(R.string.profile_add_photo_save_failed),
+                                Toast.LENGTH_LONG,
+                            ).show()
+                    }
+                    if (effect.pinSaveFailed) {
+                        Toast
+                            .makeText(
+                                context,
+                                context.getString(R.string.profile_save_pin_failed),
                                 Toast.LENGTH_LONG,
                             ).show()
                     }
@@ -106,6 +118,14 @@ fun AddProfileScreen(
                 onDone = viewModel::onCropDone,
                 onCancel = viewModel::onCropCancel,
                 modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        if (pinOffer == PinOfferState.Asking) {
+            PinOfferDialog(
+                onSetPin = { viewModel.onEvent(PinOfferEvent.SetPin) },
+                onSkip = { viewModel.onEvent(PinOfferEvent.Skip) },
+                onDismiss = { viewModel.onEvent(PinOfferEvent.Dismissed) },
             )
         }
     }

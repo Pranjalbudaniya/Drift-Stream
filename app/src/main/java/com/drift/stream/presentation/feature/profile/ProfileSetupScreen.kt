@@ -1,6 +1,7 @@
 package com.drift.stream.presentation.feature.profile
 
 import android.content.res.Configuration
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,11 +19,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.drift.stream.R
+import com.drift.stream.presentation.feature.pin.PinOfferDialog
+import com.drift.stream.presentation.feature.pin.PinOfferEvent
+import com.drift.stream.presentation.feature.pin.PinOfferState
 import com.drift.stream.presentation.theme.NexusTheme
 
 @Composable
@@ -31,7 +36,9 @@ fun ProfileSetupScreen(
     modifier: Modifier = Modifier,
     viewModel: ProfileSetupViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val pinOffer by viewModel.pinOffer.collectAsStateWithLifecycle()
     val croppingBitmap by viewModel.croppingBitmap.collectAsStateWithLifecycle()
     var isEmojiPickerOpen by rememberSaveable { mutableStateOf(false) }
 
@@ -48,7 +55,17 @@ fun ProfileSetupScreen(
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
             when (effect) {
-                is SetupEffect.Done -> onDone(effect.ownerId)
+                is SetupEffect.Done -> {
+                    if (effect.pinSaveFailed) {
+                        Toast
+                            .makeText(
+                                context,
+                                context.getString(R.string.profile_save_pin_failed),
+                                Toast.LENGTH_LONG,
+                            ).show()
+                    }
+                    onDone(effect.ownerId)
+                }
             }
         }
     }
@@ -83,6 +100,14 @@ fun ProfileSetupScreen(
                 onDone = viewModel::onCropDone,
                 onCancel = viewModel::onCropCancel,
                 modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        if (pinOffer == PinOfferState.Asking) {
+            PinOfferDialog(
+                onSetPin = { viewModel.onEvent(PinOfferEvent.SetPin) },
+                onSkip = { viewModel.onEvent(PinOfferEvent.Skip) },
+                onDismiss = { viewModel.onEvent(PinOfferEvent.Dismissed) },
             )
         }
     }

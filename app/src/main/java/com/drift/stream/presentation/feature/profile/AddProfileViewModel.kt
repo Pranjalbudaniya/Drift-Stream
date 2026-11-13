@@ -11,9 +11,20 @@ import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.model.ProfileDraft
 import com.drift.stream.domain.profile.CropRect
 import com.drift.stream.domain.profile.CropState
+import com.drift.stream.domain.profile.PendingPin
+import com.drift.stream.domain.profile.PinChallenges
+import com.drift.stream.domain.profile.PinManagerSetResult
+import com.drift.stream.domain.profile.PinRequest
+import com.drift.stream.domain.profile.PinResult
+import com.drift.stream.domain.profile.ProfilePinManager
 import com.drift.stream.domain.profile.cropRect
 import com.drift.stream.domain.repository.CreateResult
+import com.drift.stream.domain.repository.ProfilePinRepository
 import com.drift.stream.domain.repository.ProfileRepository
+import com.drift.stream.domain.repository.SetPinResult
+import com.drift.stream.domain.repository.VerifyResult
+import com.drift.stream.presentation.feature.pin.PinOfferEvent
+import com.drift.stream.presentation.feature.pin.PinOfferState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +42,7 @@ sealed interface AddProfileEffect {
     data class Done(
         val profileId: Long,
         val photoSaveFailed: Boolean = false,
+        val pinSaveFailed: Boolean = false,
     ) : AddProfileEffect
 }
 
@@ -40,48 +52,23 @@ class AddProfileViewModel
     constructor(
         private val profileRepository: ProfileRepository,
         private val savedStateHandle: SavedStateHandle,
-        private val avatarPhotoStore: AvatarPhotoStore,
-        private val avatarPhotoPipeline: AvatarPhotoPipeline,
+        private val photoServices: AvatarPhotoServices,
+        private val pinOps: ProfilePinOps,
         private val clock: Clock,
     ) : ViewModel() {
         constructor(
             profileRepository: ProfileRepository,
             savedStateHandle: SavedStateHandle,
+            avatarPhotoStore: AvatarPhotoStore,
+            avatarPhotoPipeline: AvatarPhotoPipeline,
+            pinOps: ProfilePinOps,
+            clock: Clock = Clock.systemUTC(),
         ) : this(
             profileRepository = profileRepository,
             savedStateHandle = savedStateHandle,
-            avatarPhotoStore =
-                object : AvatarPhotoStore {
-                    override fun fileOf(profileId: Long) = File("")
-
-                    override suspend fun write(
-                        profileId: Long,
-                        bytes: ByteArray,
-                    ) = Unit
-
-                    override suspend fun delete(profileId: Long) = Unit
-                },
-            avatarPhotoPipeline =
-                object : AvatarPhotoPipeline {
-                    override suspend fun decode(uri: Uri) = null
-
-                    override suspend fun cropAndSavePending(
-                        bitmap: Bitmap,
-                        cropRect: CropRect,
-                    ) = null
-
-                    override suspend fun readBytes(path: String) =
-                        try {
-                            File(path).readBytes()
-                        } catch (_: IOException) {
-                            null
-                        }
-
-                    override fun deletePending(path: String?) {
-                        path?.let { File(it).delete() }
-                    }
-                },
-            clock = Clock.systemUTC(),
+            photoServices = AvatarPhotoServices(avatarPhotoStore, avatarPhotoPipeline),
+            pinOps = pinOps,
+            clock = clock,
         )
 
         constructor(
@@ -93,31 +80,35 @@ class AddProfileViewModel
             profileRepository = profileRepository,
             savedStateHandle = savedStateHandle,
             avatarPhotoStore = avatarPhotoStore,
-            avatarPhotoPipeline =
-                object : AvatarPhotoPipeline {
-                    override suspend fun decode(uri: Uri) = null
-
-                    override suspend fun cropAndSavePending(
-                        bitmap: Bitmap,
-                        cropRect: CropRect,
-                    ) = null
-
-                    override suspend fun readBytes(path: String) =
-                        try {
-                            File(path).readBytes()
-                        } catch (_: IOException) {
-                            null
-                        }
-
-                    override fun deletePending(path: String?) {
-                        path?.let { File(it).delete() }
-                    }
-                },
+            avatarPhotoPipeline = defaultAddAvatarPhotoPipeline(),
+            pinOps = defaultAddProfilePinOps(profileRepository),
             clock = clock,
+        )
+
+        constructor(
+            profileRepository: ProfileRepository,
+            savedStateHandle: SavedStateHandle,
+        ) : this(
+            profileRepository = profileRepository,
+            savedStateHandle = savedStateHandle,
+            avatarPhotoStore = defaultAddAvatarPhotoStore(),
+            avatarPhotoPipeline = defaultAddAvatarPhotoPipeline(),
+            pinOps = defaultAddProfilePinOps(profileRepository),
+            clock = Clock.systemUTC(),
         )
 
         private var existingProfiles: List<Profile> = emptyList()
         private var isInitialized: Boolean = false
+
+        private var pendingPin: String? = null
+        private var pendingSubmitRequest: SubmitRequest? = null
+        private var pendingOtherNames: Collection<String> = emptyList()
+
+        private val _pinOffer = MutableStateFlow(PinOfferState.None)
+        val pinOffer: StateFlow<PinOfferState> = _pinOffer.asStateFlow()
+
+        var pinSaveFailed: Boolean = false
+            private set
 
         private val _effects = MutableSharedFlow<AddProfileEffect>(extraBufferCapacity = 1)
         val effects: SharedFlow<AddProfileEffect> = _effects.asSharedFlow()
@@ -168,7 +159,7 @@ class AddProfileViewModel
         fun onPhotoPicked(uri: Uri) {
             viewModelScope.launch {
                 _uiState.value = _uiState.value.copy(photoError = false)
-                val bitmap = avatarPhotoPipeline.decode(uri)
+                val bitmap = photoServices.pipeline.decode(uri)
                 if (bitmap != null) {
                     _croppingBitmap.value = bitmap
                 } else {
@@ -185,7 +176,7 @@ class AddProfileViewModel
             _croppingBitmap.value = null
             viewModelScope.launch {
                 val rect = cropRect(cropState, bitmap.width, bitmap.height, windowSize)
-                val pendingPath = avatarPhotoPipeline.cropAndSavePending(bitmap, rect)
+                val pendingPath = photoServices.pipeline.cropAndSavePending(bitmap, rect)
                 if (pendingPath != null) {
                     onEvent(ProfileFormEvent.PhotoCropped(pendingPath))
                 } else {
@@ -201,11 +192,59 @@ class AddProfileViewModel
         fun onEvent(event: ProfileFormEvent) {
             val otherNames = existingProfiles.map { it.name }
             val (nextState, request) = reduceProfileForm(_uiState.value, event, otherNames)
+            if (request != null) {
+                if (_pinOffer.value == PinOfferState.Asking) return
+                pendingSubmitRequest = request
+                pendingOtherNames = otherNames
+                _pinOffer.value = PinOfferState.Asking
+                _uiState.value = nextState.copy(saving = false)
+                persistState(_uiState.value)
+                return
+            }
             _uiState.value = nextState
             persistState(nextState)
+        }
 
-            if (request != null) {
-                handleSubmit(request, otherNames)
+        fun onEvent(event: PinOfferEvent) {
+            when (event) {
+                PinOfferEvent.SetPin -> {
+                    viewModelScope.launch {
+                        val challengeResult = pinOps.challenges.ask(PinRequest.Create)
+                        when (challengeResult) {
+                            is PinResult.Created -> {
+                                pendingPin = challengeResult.pin
+                                val request = pendingSubmitRequest ?: return@launch
+                                pendingSubmitRequest = null
+                                _pinOffer.value = PinOfferState.None
+                                _uiState.value = _uiState.value.copy(saving = true)
+                                handleSubmit(request, pendingOtherNames)
+                            }
+
+                            is PinResult.Cancelled -> {
+                                pendingPin = null
+                                _pinOffer.value = PinOfferState.Asking
+                            }
+
+                            else -> {}
+                        }
+                    }
+                }
+
+                PinOfferEvent.Skip -> {
+                    val request = pendingSubmitRequest ?: return
+                    pendingSubmitRequest = null
+                    pendingPin = null
+                    _pinOffer.value = PinOfferState.None
+                    _uiState.value = _uiState.value.copy(saving = true)
+                    handleSubmit(request, pendingOtherNames)
+                }
+
+                PinOfferEvent.Dismissed -> {
+                    pendingPin = null
+                    pendingSubmitRequest = null
+                    _pinOffer.value = PinOfferState.None
+                    _uiState.value = _uiState.value.copy(saving = false)
+                }
             }
         }
 
@@ -230,6 +269,7 @@ class AddProfileViewModel
                     }
 
                     else -> {
+                        pendingPin = null
                         val (failedState, _) =
                             reduceProfileForm(
                                 _uiState.value,
@@ -247,12 +287,13 @@ class AddProfileViewModel
             createdId: Long,
             pendingPath: String?,
         ) {
+            var photoFailed = false
             if (pendingPath != null) {
-                val bytes = avatarPhotoPipeline.readBytes(pendingPath)
+                val bytes = photoServices.pipeline.readBytes(pendingPath)
                 var writeSuccess = false
                 if (bytes != null) {
                     try {
-                        avatarPhotoStore.write(createdId, bytes)
+                        photoServices.store.write(createdId, bytes)
                         writeSuccess = true
                     } catch (_: IOException) {
                         writeSuccess = false
@@ -261,16 +302,32 @@ class AddProfileViewModel
                 if (writeSuccess) {
                     val stamp = clock.millis()
                     profileRepository.setAvatarPhoto(createdId, stamp)
-                    avatarPhotoPipeline.deletePending(pendingPath)
-                    _effects.emit(AddProfileEffect.Done(createdId))
+                    photoServices.pipeline.deletePending(pendingPath)
                 } else {
+                    photoFailed = true
                     _uiState.value = _uiState.value.copy(saving = false, photoError = true)
                     persistState(_uiState.value)
-                    _effects.emit(AddProfileEffect.Done(createdId, photoSaveFailed = true))
                 }
-            } else {
-                _effects.emit(AddProfileEffect.Done(createdId))
             }
+
+            val pin = pendingPin
+            pendingPin = null
+            var pinFailed = false
+            if (pin != null) {
+                val setResult = pinOps.manager.setPin(createdId, pin)
+                if (setResult !is PinManagerSetResult.Set) {
+                    pinFailed = true
+                }
+            }
+            pinSaveFailed = pinFailed
+
+            _effects.emit(
+                AddProfileEffect.Done(
+                    profileId = createdId,
+                    photoSaveFailed = photoFailed,
+                    pinSaveFailed = pinFailed,
+                ),
+            )
         }
 
         fun reset() {
@@ -281,7 +338,7 @@ class AddProfileViewModel
 
         public override fun onCleared() {
             super.onCleared()
-            avatarPhotoPipeline.deletePending(_uiState.value.pendingPhotoPath)
+            photoServices.pipeline.deletePending(_uiState.value.pendingPhotoPath)
         }
 
         private fun persistState(state: ProfileFormState) {
@@ -300,3 +357,69 @@ class AddProfileViewModel
             const val KEY_PENDING_PHOTO = "add_profile_pending_photo"
         }
     }
+
+private fun defaultAddAvatarPhotoStore(): AvatarPhotoStore =
+    object : AvatarPhotoStore {
+        override fun fileOf(profileId: Long) = File("")
+
+        override suspend fun write(
+            profileId: Long,
+            bytes: ByteArray,
+        ) = Unit
+
+        override suspend fun delete(profileId: Long) = Unit
+    }
+
+private fun defaultAddAvatarPhotoPipeline(): AvatarPhotoPipeline =
+    object : AvatarPhotoPipeline {
+        override suspend fun decode(uri: Uri) = null
+
+        override suspend fun cropAndSavePending(
+            bitmap: Bitmap,
+            cropRect: CropRect,
+        ) = null
+
+        override suspend fun readBytes(path: String) =
+            try {
+                File(path).readBytes()
+            } catch (_: IOException) {
+                null
+            }
+
+        override fun deletePending(path: String?) {
+            path?.let { File(it).delete() }
+        }
+    }
+
+private fun defaultAddProfilePinRepository(): ProfilePinRepository =
+    object : ProfilePinRepository {
+        override suspend fun setPin(
+            profileId: Long,
+            pin: String,
+        ): SetPinResult = SetPinResult.Set
+
+        override suspend fun removePin(profileId: Long) = Unit
+
+        override suspend fun verify(
+            profileId: Long,
+            pin: String,
+        ): VerifyResult = VerifyResult.Wrong(0)
+
+        override suspend fun remainingLock(profileId: Long): Long = 0L
+    }
+
+private fun defaultAddProfilePinOps(profileRepository: ProfileRepository): ProfilePinOps =
+    ProfilePinOps(
+        manager = ProfilePinManager(profileRepository, defaultAddProfilePinRepository()),
+        challenges =
+            object : PinChallenges {
+                override val pending: StateFlow<PendingPin?> = MutableStateFlow(null)
+
+                override suspend fun ask(request: PinRequest): PinResult = PinResult.Cancelled
+
+                override fun finish(
+                    id: Long,
+                    result: PinResult,
+                ) = Unit
+            },
+    )

@@ -4,11 +4,18 @@ import androidx.lifecycle.SavedStateHandle
 import com.drift.stream.data.profile.AvatarPhotoStore
 import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.model.ProfileDraft
+import com.drift.stream.domain.profile.PinChallenges
+import com.drift.stream.domain.profile.PinManagerSetResult
+import com.drift.stream.domain.profile.PinRequest
+import com.drift.stream.domain.profile.PinResult
 import com.drift.stream.domain.repository.CreateResult
 import com.drift.stream.domain.repository.ProfileRepository
 import com.drift.stream.domain.usecase.NameResult
+import com.drift.stream.presentation.feature.pin.PinOfferEvent
+import com.drift.stream.presentation.feature.pin.PinOfferState
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
@@ -98,6 +105,9 @@ class AddProfileViewModelTest {
             viewModel.onEvent(ProfileFormEvent.Submit)
             testScheduler.advanceUntilIdle()
 
+            viewModel.onEvent(PinOfferEvent.Skip)
+            testScheduler.advanceUntilIdle()
+
             coVerify(exactly = 1) {
                 profileRepo.create(ProfileDraft("Asha", 5, "🦊"))
             }
@@ -145,21 +155,22 @@ class AddProfileViewModelTest {
             testScheduler.advanceUntilIdle()
 
             viewModel.onEvent(ProfileFormEvent.NameChanged("Asha"))
-            viewModel.onEvent(ProfileFormEvent.ColorPicked(3))
-            viewModel.onEvent(ProfileFormEvent.EmojiPicked("🚀"))
+            viewModel.onEvent(ProfileFormEvent.ColorPicked(4))
             viewModel.onEvent(ProfileFormEvent.Submit)
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(PinOfferEvent.Skip)
             testScheduler.advanceUntilIdle()
 
             val state = viewModel.uiState.value
             assertFalse(state.saving)
             assertTrue(state.saveFailed)
             assertEquals("Asha", state.name)
-            assertEquals(3, state.colorIndex)
-            assertEquals("🚀", state.emoji)
+            assertEquals(4, state.colorIndex)
         }
 
     @Test
-    fun AP4_doubleSubmit_createsOnce() =
+    fun AP4_submit_ignoresRepeatedSubmit() =
         testScope.runTest {
             val owner = sampleProfile(1L, "Me", 0)
             val profileRepo = mockk<ProfileRepository>()
@@ -181,6 +192,9 @@ class AddProfileViewModelTest {
             // Two quick submits
             viewModel.onEvent(ProfileFormEvent.Submit)
             viewModel.onEvent(ProfileFormEvent.Submit)
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(PinOfferEvent.Skip)
             testScheduler.advanceUntilIdle()
 
             coVerify(exactly = 1) {
@@ -241,6 +255,9 @@ class AddProfileViewModelTest {
             viewModel.onEvent(ProfileFormEvent.Submit)
             testScheduler.advanceUntilIdle()
 
+            viewModel.onEvent(PinOfferEvent.Skip)
+            testScheduler.advanceUntilIdle()
+
             coVerify(exactly = 1) {
                 profileRepo.create(ProfileDraft("Bob", 3, null, null, null))
             }
@@ -284,5 +301,198 @@ class AddProfileViewModelTest {
 
             viewModel.onCleared()
             assertFalse(tempFile.exists())
+        }
+
+    @Test
+    fun AP7_submit_validForm_showsPinOffer() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", 0)
+            val profileRepo = mockk<ProfileRepository>()
+            val profilesFlow = MutableStateFlow(listOf(owner))
+            every { profileRepo.profiles } returns profilesFlow
+
+            val savedStateHandle = SavedStateHandle()
+            val viewModel = AddProfileViewModel(profileRepo, savedStateHandle)
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(ProfileFormEvent.NameChanged("Asha"))
+            viewModel.onEvent(ProfileFormEvent.Submit)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(PinOfferState.Asking, viewModel.pinOffer.value)
+            coVerify(exactly = 0) { profileRepo.create(any()) }
+        }
+
+    @Test
+    fun AP8_pinOffer_skip_createsWithoutPin() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", 0)
+            val profileRepo = mockk<ProfileRepository>()
+            val profilesFlow = MutableStateFlow(listOf(owner))
+            every { profileRepo.profiles } returns profilesFlow
+
+            val pinOps = mockk<ProfilePinOps>(relaxed = true)
+            val created = sampleProfile(2L, "Asha", 1)
+            coEvery { profileRepo.create(any()) } returns CreateResult.Created(created)
+
+            val savedStateHandle = SavedStateHandle()
+            val viewModel =
+                AddProfileViewModel(
+                    profileRepository = profileRepo,
+                    savedStateHandle = savedStateHandle,
+                    avatarPhotoStore = mockk(relaxed = true),
+                    avatarPhotoPipeline = mockk(relaxed = true),
+                    pinOps = pinOps,
+                    clock = Clock.systemUTC(),
+                )
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(ProfileFormEvent.NameChanged("Asha"))
+            viewModel.onEvent(ProfileFormEvent.Submit)
+            testScheduler.advanceUntilIdle()
+
+            var receivedDone: AddProfileEffect.Done? = null
+            val job =
+                launch {
+                    viewModel.effects.collect { if (it is AddProfileEffect.Done) receivedDone = it }
+                }
+
+            viewModel.onEvent(PinOfferEvent.Skip)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { profileRepo.create(any()) }
+            coVerify(exactly = 0) { pinOps.manager.setPin(any(), any()) }
+            assertEquals(AddProfileEffect.Done(2L), receivedDone)
+            assertEquals(PinOfferState.None, viewModel.pinOffer.value)
+            job.cancel()
+        }
+
+    @Test
+    fun AP9_pinOffer_pinCreated_createsThenSetsPin() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", 0)
+            val profileRepo = mockk<ProfileRepository>()
+            val profilesFlow = MutableStateFlow(listOf(owner))
+            every { profileRepo.profiles } returns profilesFlow
+
+            val pinOps = mockk<ProfilePinOps>()
+            coEvery { pinOps.challenges.ask(PinRequest.Create) } returns PinResult.Created("1234")
+            coEvery { pinOps.manager.setPin(2L, "1234") } returns PinManagerSetResult.Set
+
+            val created = sampleProfile(2L, "Asha", 1)
+            coEvery { profileRepo.create(any()) } returns CreateResult.Created(created)
+
+            val savedStateHandle = SavedStateHandle()
+            val viewModel =
+                AddProfileViewModel(
+                    profileRepository = profileRepo,
+                    savedStateHandle = savedStateHandle,
+                    avatarPhotoStore = mockk(relaxed = true),
+                    avatarPhotoPipeline = mockk(relaxed = true),
+                    pinOps = pinOps,
+                    clock = Clock.systemUTC(),
+                )
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(ProfileFormEvent.NameChanged("Asha"))
+            viewModel.onEvent(ProfileFormEvent.Submit)
+            testScheduler.advanceUntilIdle()
+
+            var receivedDone: AddProfileEffect.Done? = null
+            val job =
+                launch {
+                    viewModel.effects.collect { if (it is AddProfileEffect.Done) receivedDone = it }
+                }
+
+            viewModel.onEvent(PinOfferEvent.SetPin)
+            testScheduler.advanceUntilIdle()
+
+            coVerifyOrder {
+                profileRepo.create(any())
+                pinOps.manager.setPin(2L, "1234")
+            }
+            assertEquals(AddProfileEffect.Done(2L, pinSaveFailed = false), receivedDone)
+            assertFalse(viewModel.pinSaveFailed)
+            job.cancel()
+        }
+
+    @Test
+    fun AP10_pinOffer_setPinFails_keepsProfile_reportsPinError() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", 0)
+            val profileRepo = mockk<ProfileRepository>()
+            val profilesFlow = MutableStateFlow(listOf(owner))
+            every { profileRepo.profiles } returns profilesFlow
+
+            val pinOps = mockk<ProfilePinOps>()
+            coEvery { pinOps.challenges.ask(PinRequest.Create) } returns PinResult.Created("1234")
+            coEvery { pinOps.manager.setPin(2L, "1234") } returns PinManagerSetResult.AlreadyLocked
+
+            val created = sampleProfile(2L, "Asha", 1)
+            coEvery { profileRepo.create(any()) } returns CreateResult.Created(created)
+
+            val savedStateHandle = SavedStateHandle()
+            val viewModel =
+                AddProfileViewModel(
+                    profileRepository = profileRepo,
+                    savedStateHandle = savedStateHandle,
+                    avatarPhotoStore = mockk(relaxed = true),
+                    avatarPhotoPipeline = mockk(relaxed = true),
+                    pinOps = pinOps,
+                    clock = Clock.systemUTC(),
+                )
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(ProfileFormEvent.NameChanged("Asha"))
+            viewModel.onEvent(ProfileFormEvent.Submit)
+            testScheduler.advanceUntilIdle()
+
+            var receivedDone: AddProfileEffect.Done? = null
+            val job =
+                launch {
+                    viewModel.effects.collect { if (it is AddProfileEffect.Done) receivedDone = it }
+                }
+
+            viewModel.onEvent(PinOfferEvent.SetPin)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { profileRepo.create(any()) }
+            assertTrue(viewModel.pinSaveFailed)
+            assertEquals(AddProfileEffect.Done(2L, pinSaveFailed = true), receivedDone)
+            job.cancel()
+        }
+
+    @Test
+    fun AP11_pinOffer_cancelled_returnsToOffer() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", 0)
+            val profileRepo = mockk<ProfileRepository>()
+            val profilesFlow = MutableStateFlow(listOf(owner))
+            every { profileRepo.profiles } returns profilesFlow
+
+            val pinOps = mockk<ProfilePinOps>()
+            coEvery { pinOps.challenges.ask(PinRequest.Create) } returns PinResult.Cancelled
+
+            val savedStateHandle = SavedStateHandle()
+            val viewModel =
+                AddProfileViewModel(
+                    profileRepository = profileRepo,
+                    savedStateHandle = savedStateHandle,
+                    avatarPhotoStore = mockk(relaxed = true),
+                    avatarPhotoPipeline = mockk(relaxed = true),
+                    pinOps = pinOps,
+                    clock = Clock.systemUTC(),
+                )
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(ProfileFormEvent.NameChanged("Asha"))
+            viewModel.onEvent(ProfileFormEvent.Submit)
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(PinOfferEvent.SetPin)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(PinOfferState.Asking, viewModel.pinOffer.value)
+            coVerify(exactly = 0) { profileRepo.create(any()) }
         }
 }

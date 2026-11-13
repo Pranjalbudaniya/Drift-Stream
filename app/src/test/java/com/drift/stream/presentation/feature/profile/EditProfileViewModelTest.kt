@@ -6,6 +6,14 @@ import com.drift.stream.data.profile.AvatarPhotoPipeline
 import com.drift.stream.data.profile.AvatarPhotoStore
 import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.profile.DeleteHost
+import com.drift.stream.domain.profile.PinChallenges
+import com.drift.stream.domain.profile.PinManagerChangeResult
+import com.drift.stream.domain.profile.PinManagerRemoveResult
+import com.drift.stream.domain.profile.PinManagerSetResult
+import com.drift.stream.domain.profile.PinPurpose
+import com.drift.stream.domain.profile.PinRequest
+import com.drift.stream.domain.profile.PinResult
+import com.drift.stream.domain.profile.ProfilePinManager
 import com.drift.stream.domain.repository.DeleteResult
 import com.drift.stream.domain.repository.ProfileRepository
 import com.drift.stream.domain.repository.UpdateResult
@@ -50,6 +58,8 @@ class EditProfileViewModelTest {
     private val activeProfileHolder = mockk<ActiveProfileHolder>()
     private val avatarPhotoStore = mockk<AvatarPhotoStore>(relaxed = true)
     private val avatarPhotoPipeline = mockk<AvatarPhotoPipeline>(relaxed = true)
+    private val profilePinManager = mockk<ProfilePinManager>()
+    private val pinChallenges = mockk<PinChallenges>()
 
     private val profilesFlow = MutableStateFlow<List<Profile>>(emptyList())
     private val activeProfileIdFlow = MutableStateFlow<Long?>(null)
@@ -72,39 +82,41 @@ class EditProfileViewModelTest {
     private fun sampleProfile(
         id: Long,
         name: String,
-        color: Int = 0,
-        emoji: String? = null,
         stamp: Long? = null,
+        isLocked: Boolean = false,
     ): Profile =
         Profile(
             id = id,
             name = name,
-            avatarColor = color,
-            avatarEmoji = emoji,
+            avatarColor = 0,
+            avatarEmoji = null,
             avatarPhotoStamp = stamp,
             isOwner = id == 1L,
             needsSetup = false,
+            isLocked = isLocked,
             createdAt = 1000L,
             lastUsedAt = 1000L,
             sortOrder = id.toInt(),
         )
 
     private fun createViewModel(
-        profileId: Long,
+        profileId: Long? = null,
         host: DeleteHost = DeleteHost.Picker,
         clock: Clock = fixedClock,
     ): EditProfileViewModel {
         val savedStateHandle =
             SavedStateHandle().apply {
-                set("profileId", profileId)
-                set("host", host.name)
+                if (profileId != null) {
+                    set("profileId", profileId)
+                    set("host", host.name)
+                }
             }
         return EditProfileViewModel(
             profileRepository = profileRepository,
             activeProfileHolder = activeProfileHolder,
-            avatarPhotoStore = avatarPhotoStore,
-            avatarPhotoPipeline = avatarPhotoPipeline,
+            photoServices = AvatarPhotoServices(avatarPhotoStore, avatarPhotoPipeline),
             savedStateHandle = savedStateHandle,
+            pinOps = ProfilePinOps(profilePinManager, pinChallenges),
             clock = clock,
         )
     }
@@ -113,7 +125,7 @@ class EditProfileViewModelTest {
     fun EV1_save_updatesNameAndAvatar_withTrimmedName() =
         testScope.runTest {
             val owner = sampleProfile(1L, "Me")
-            val target = sampleProfile(2L, "Asha", color = 0)
+            val target = sampleProfile(2L, "Asha")
             profilesFlow.value = listOf(owner, target)
             coEvery { profileRepository.get(2L) } returns target
             coEvery { profileRepository.update(any()) } answers {
@@ -458,16 +470,7 @@ class EditProfileViewModelTest {
             coEvery { profileRepository.get(1L) } returns owner
             coEvery { profileRepository.get(2L) } returns nonOwner
 
-            val savedStateHandle = SavedStateHandle()
-            val viewModel =
-                EditProfileViewModel(
-                    profileRepository = profileRepository,
-                    activeProfileHolder = activeProfileHolder,
-                    avatarPhotoStore = avatarPhotoStore,
-                    avatarPhotoPipeline = avatarPhotoPipeline,
-                    savedStateHandle = savedStateHandle,
-                    clock = fixedClock,
-                )
+            val viewModel = createViewModel(null)
 
             val effects = mutableListOf<EditProfileEffect>()
             val job = launch { viewModel.effects.collect { effects.add(it) } }
@@ -517,5 +520,109 @@ class EditProfileViewModelTest {
                 viewModel.uiState.value.profile
                     ?.id,
             )
+        }
+
+    @Test
+    fun EV17_setPin_whenUnlocked_asksCreateOnly_thenSets() =
+        testScope.runTest {
+            val target = sampleProfile(2L, "Asha", isLocked = false)
+            profilesFlow.value = listOf(target)
+            coEvery { profileRepository.get(2L) } returns target
+            coEvery { pinChallenges.ask(PinRequest.Create) } returns PinResult.Created("1234")
+            coEvery { profilePinManager.setPin(2L, "1234") } returns PinManagerSetResult.Set
+
+            val viewModel = createViewModel(2L)
+            testScheduler.advanceUntilIdle()
+            assertFalse(viewModel.uiState.value.pinLockEnabled)
+
+            viewModel.onEvent(EditProfileEvent.SetPinClicked)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Create) }
+            coVerify(exactly = 0) { pinChallenges.ask(match { it is PinRequest.Verify }) }
+            coVerify(exactly = 1) { profilePinManager.setPin(2L, "1234") }
+            assertFalse(viewModel.uiState.value.pinActionError)
+        }
+
+    @Test
+    fun EV18_changePin_asksCurrentThenCreate_thenChanges() =
+        testScope.runTest {
+            val target = sampleProfile(2L, "Asha", isLocked = true)
+            profilesFlow.value = listOf(target)
+            coEvery { profileRepository.get(2L) } returns target
+            coEvery { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.CurrentPinForChange)) } returns
+                PinResult.Verified("1234")
+            coEvery { pinChallenges.ask(PinRequest.Create) } returns PinResult.Created("5678")
+            coEvery { profilePinManager.changePin(2L, "1234", "5678") } returns PinManagerChangeResult.Changed
+
+            val viewModel = createViewModel(2L)
+            testScheduler.advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.pinLockEnabled)
+
+            viewModel.onEvent(EditProfileEvent.ChangePinClicked)
+            testScheduler.advanceUntilIdle()
+
+            coVerifyOrder {
+                pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.CurrentPinForChange))
+                pinChallenges.ask(PinRequest.Create)
+                profilePinManager.changePin(2L, "1234", "5678")
+            }
+            assertFalse(viewModel.uiState.value.pinActionError)
+        }
+
+    @Test
+    fun EV19_removePin_asksCurrent_thenRemoves() =
+        testScope.runTest {
+            val target = sampleProfile(2L, "Asha", isLocked = true)
+            profilesFlow.value = listOf(target)
+            coEvery { profileRepository.get(2L) } returns target
+            coEvery { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.CurrentPinForRemove)) } returns
+                PinResult.Verified("1234")
+            coEvery { profilePinManager.removePin(2L, "1234") } returns PinManagerRemoveResult.Removed
+
+            val viewModel = createViewModel(2L)
+            testScheduler.advanceUntilIdle()
+            assertTrue(viewModel.uiState.value.pinLockEnabled)
+
+            viewModel.onEvent(EditProfileEvent.RemovePinClicked)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.CurrentPinForRemove)) }
+            coVerify(exactly = 0) { pinChallenges.ask(PinRequest.Create) }
+            coVerify(exactly = 1) { profilePinManager.removePin(2L, "1234") }
+            assertFalse(viewModel.uiState.value.pinActionError)
+        }
+
+    @Test
+    fun EV20_changePin_cancelledAtAnyStep_keepsPin() =
+        testScope.runTest {
+            val target = sampleProfile(2L, "Asha", isLocked = true)
+            profilesFlow.value = listOf(target)
+            coEvery { profileRepository.get(2L) } returns target
+
+            // Step A: Cancelled during current PIN verify
+            coEvery { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.CurrentPinForChange)) } returns
+                PinResult.Cancelled
+
+            val viewModel = createViewModel(2L)
+            testScheduler.advanceUntilIdle()
+
+            viewModel.onEvent(EditProfileEvent.ChangePinClicked)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 0) { pinChallenges.ask(PinRequest.Create) }
+            coVerify(exactly = 0) { profilePinManager.changePin(any(), any(), any()) }
+            assertFalse(viewModel.uiState.value.pinActionError)
+
+            // Step B: Verified current PIN, but Cancelled during new PIN create
+            coEvery { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.CurrentPinForChange)) } returns
+                PinResult.Verified("1234")
+            coEvery { pinChallenges.ask(PinRequest.Create) } returns PinResult.Cancelled
+
+            viewModel.onEvent(EditProfileEvent.ChangePinClicked)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 0) { profilePinManager.changePin(any(), any(), any()) }
+            assertFalse(viewModel.uiState.value.pinActionError)
         }
 }

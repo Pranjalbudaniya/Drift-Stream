@@ -13,6 +13,14 @@ import com.drift.stream.data.profile.AvatarPhotoStore
 import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.profile.CropState
 import com.drift.stream.domain.profile.DeleteHost
+import com.drift.stream.domain.profile.PinChallenges
+import com.drift.stream.domain.profile.PinManagerChangeResult
+import com.drift.stream.domain.profile.PinManagerRemoveResult
+import com.drift.stream.domain.profile.PinManagerSetResult
+import com.drift.stream.domain.profile.PinPurpose
+import com.drift.stream.domain.profile.PinRequest
+import com.drift.stream.domain.profile.PinResult
+import com.drift.stream.domain.profile.ProfilePinManager
 import com.drift.stream.domain.profile.canDeleteProfile
 import com.drift.stream.domain.profile.canEditProfile
 import com.drift.stream.domain.profile.cropRect
@@ -45,6 +53,8 @@ data class EditProfileUiState(
     val closeScreen: Boolean = false,
     val activeProfileId: Long? = null,
     val cropBitmap: Bitmap? = null,
+    val pinLockEnabled: Boolean = false,
+    val pinActionError: Boolean = false,
 )
 
 sealed interface EditProfileEffect {
@@ -78,7 +88,27 @@ sealed interface EditProfileEvent {
     data object PhotoCropCancelled : EditProfileEvent
 
     data object DeleteErrorDismissed : EditProfileEvent
+
+    data object SetPinClicked : EditProfileEvent
+
+    data object ChangePinClicked : EditProfileEvent
+
+    data object RemovePinClicked : EditProfileEvent
 }
+
+class AvatarPhotoServices
+    @Inject
+    constructor(
+        val store: AvatarPhotoStore,
+        val pipeline: AvatarPhotoPipeline,
+    )
+
+class ProfilePinOps
+    @Inject
+    constructor(
+        val manager: ProfilePinManager,
+        val challenges: PinChallenges,
+    )
 
 private const val CHOOSE_TIMEOUT_MS = 3_000L
 
@@ -88,9 +118,9 @@ class EditProfileViewModel
     constructor(
         private val profileRepository: ProfileRepository,
         private val activeProfileHolder: ActiveProfileHolder,
-        private val avatarPhotoStore: AvatarPhotoStore,
-        private val avatarPhotoPipeline: AvatarPhotoPipeline,
+        private val photoServices: AvatarPhotoServices,
         private val savedStateHandle: SavedStateHandle,
+        private val pinOps: ProfilePinOps,
         private val clock: Clock = Clock.systemUTC(),
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(EditProfileUiState())
@@ -119,6 +149,17 @@ class EditProfileViewModel
                 profileRepository.profiles.collect { profiles ->
                     currentProfiles = profiles
                     val id = targetProfileId ?: return@collect
+                    val currentLoaded = _uiState.value.profile
+                    if (currentLoaded != null && currentLoaded.id == id) {
+                        val updated = profiles.find { it.id == id }
+                        if (updated != null) {
+                            _uiState.value =
+                                _uiState.value.copy(
+                                    profile = updated,
+                                    pinLockEnabled = updated.isLocked,
+                                )
+                        }
+                    }
                     if (profiles.isNotEmpty() && profiles.none { it.id == id }) {
                         _effects.emit(EditProfileEffect.Close)
                         _uiState.value = _uiState.value.copy(closeScreen = true)
@@ -174,6 +215,7 @@ class EditProfileViewModel
                         formState = defaultStateForEdit(profile),
                         canDelete = canDelete,
                         activeProfileId = activeId,
+                        pinLockEnabled = profile.isLocked,
                     )
             }
         }
@@ -228,6 +270,53 @@ class EditProfileViewModel
                 EditProfileEvent.DeleteErrorDismissed -> {
                     _uiState.value = _uiState.value.copy(deleteErrorRes = null)
                 }
+
+                EditProfileEvent.SetPinClicked,
+                EditProfileEvent.ChangePinClicked,
+                EditProfileEvent.RemovePinClicked,
+                -> {
+                    handlePinAction(event)
+                }
+            }
+        }
+
+        private fun handlePinAction(event: EditProfileEvent) {
+            val id = targetProfileId ?: return
+            viewModelScope.launch {
+                _uiState.value = _uiState.value.copy(pinActionError = false)
+                when (event) {
+                    EditProfileEvent.SetPinClicked -> {
+                        val result = pinOps.challenges.ask(PinRequest.Create)
+                        if (result is PinResult.Created) {
+                            val setResult = pinOps.manager.setPin(id, result.pin)
+                            if (setResult !is PinManagerSetResult.Set) {
+                                _uiState.value = _uiState.value.copy(pinActionError = true)
+                            }
+                        }
+                    }
+
+                    EditProfileEvent.ChangePinClicked -> {
+                        val verifyResult = pinOps.challenges.ask(PinRequest.Verify(id, PinPurpose.CurrentPinForChange))
+                        if (verifyResult !is PinResult.Verified) return@launch
+                        val createResult = pinOps.challenges.ask(PinRequest.Create)
+                        if (createResult !is PinResult.Created) return@launch
+                        val changeResult = pinOps.manager.changePin(id, verifyResult.pin, createResult.pin)
+                        if (changeResult !is PinManagerChangeResult.Changed) {
+                            _uiState.value = _uiState.value.copy(pinActionError = true)
+                        }
+                    }
+
+                    EditProfileEvent.RemovePinClicked -> {
+                        val verifyResult = pinOps.challenges.ask(PinRequest.Verify(id, PinPurpose.CurrentPinForRemove))
+                        if (verifyResult !is PinResult.Verified) return@launch
+                        val removeResult = pinOps.manager.removePin(id, verifyResult.pin)
+                        if (removeResult !is PinManagerRemoveResult.Removed) {
+                            _uiState.value = _uiState.value.copy(pinActionError = true)
+                        }
+                    }
+
+                    else -> {}
+                }
             }
         }
 
@@ -238,7 +327,7 @@ class EditProfileViewModel
 
             viewModelScope.launch {
                 try {
-                    val newPhotoStamp = preparePhotoForSave(currentProfile, request)
+                    val newPhotoStamp = preparePhotoForSave(currentProfile, request, photoServices.store, clock)
                     val updatedProfile =
                         currentProfile.copy(
                             name = request.name,
@@ -264,24 +353,6 @@ class EditProfileViewModel
             }
         }
 
-        private suspend fun preparePhotoForSave(
-            profile: Profile,
-            request: SubmitRequest,
-        ): Long? {
-            if (request.pendingPhotoPath != null) {
-                val pendingFile = File(request.pendingPhotoPath)
-                if (pendingFile.exists()) {
-                    avatarPhotoStore.write(profile.id, pendingFile.readBytes())
-                    return clock.millis()
-                }
-            }
-            return if (profile.avatarPhotoStamp != null && request.avatarKind != AvatarKind.Photo) {
-                null
-            } else {
-                profile.avatarPhotoStamp
-            }
-        }
-
         private suspend fun handleUpdateResult(
             profile: Profile,
             request: SubmitRequest,
@@ -290,10 +361,10 @@ class EditProfileViewModel
             when (result) {
                 is UpdateResult.Updated -> {
                     if (profile.avatarPhotoStamp != null && request.avatarKind != AvatarKind.Photo) {
-                        avatarPhotoStore.delete(profile.id)
+                        photoServices.store.delete(profile.id)
                     }
                     if (request.pendingPhotoPath != null) {
-                        avatarPhotoPipeline.deletePending(request.pendingPhotoPath)
+                        photoServices.pipeline.deletePending(request.pendingPhotoPath)
                     }
                     _effects.emit(EditProfileEffect.Done(profile.id))
                 }
@@ -405,7 +476,7 @@ class EditProfileViewModel
 
         private fun handlePhotoSelected(uri: Uri) {
             viewModelScope.launch {
-                val bitmap = avatarPhotoPipeline.decode(uri)
+                val bitmap = photoServices.pipeline.decode(uri)
                 if (bitmap != null) {
                     _uiState.value = _uiState.value.copy(cropBitmap = bitmap)
                 } else {
@@ -423,7 +494,7 @@ class EditProfileViewModel
 
             viewModelScope.launch {
                 val rect = cropRect(cropState, bitmap.width, bitmap.height, windowPx)
-                val path = avatarPhotoPipeline.cropAndSavePending(bitmap, rect)
+                val path = photoServices.pipeline.cropAndSavePending(bitmap, rect)
                 if (path != null) {
                     onEvent(ProfileFormEvent.PhotoCropped(path))
                 } else {
@@ -436,7 +507,7 @@ class EditProfileViewModel
             super.onCleared()
             val pending = _uiState.value.formState.pendingPhotoPath
             if (pending != null) {
-                avatarPhotoPipeline.deletePending(pending)
+                photoServices.pipeline.deletePending(pending)
                 try {
                     File(pending).delete()
                 } catch (_: Exception) {
@@ -444,3 +515,23 @@ class EditProfileViewModel
             }
         }
     }
+
+private suspend fun preparePhotoForSave(
+    profile: Profile,
+    request: SubmitRequest,
+    avatarPhotoStore: AvatarPhotoStore,
+    clock: Clock,
+): Long? {
+    if (request.pendingPhotoPath != null) {
+        val pendingFile = File(request.pendingPhotoPath)
+        if (pendingFile.exists()) {
+            avatarPhotoStore.write(profile.id, pendingFile.readBytes())
+            return clock.millis()
+        }
+    }
+    return if (profile.avatarPhotoStamp != null && request.avatarKind != AvatarKind.Photo) {
+        null
+    } else {
+        profile.avatarPhotoStamp
+    }
+}

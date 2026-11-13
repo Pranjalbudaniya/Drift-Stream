@@ -5,6 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.drift.stream.data.profile.ActiveProfileHolder
 import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.profile.CHOOSE_TIMEOUT_MS
+import com.drift.stream.domain.profile.PinChallenges
+import com.drift.stream.domain.profile.PinPurpose
+import com.drift.stream.domain.profile.PinRequest
+import com.drift.stream.domain.profile.PinResult
 import com.drift.stream.domain.profile.canManageProfiles
 import com.drift.stream.domain.repository.ProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -53,6 +57,7 @@ class ProfileSwitcherViewModel
     constructor(
         private val profileRepository: ProfileRepository,
         private val activeProfileHolder: ActiveProfileHolder,
+        private val pinChallenges: PinChallenges,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(ProfileSwitcherUiState())
         val uiState: StateFlow<ProfileSwitcherUiState> = _uiState.asStateFlow()
@@ -108,9 +113,18 @@ class ProfileSwitcherViewModel
                 return
             }
 
-            _uiState.update { it.copy(switching = true, error = false) }
+            val target = _uiState.value.profiles.find { it.id == id }
 
             viewModelScope.launch {
+                if (target?.isLocked == true) {
+                    val result = pinChallenges.ask(PinRequest.Verify(id, PinPurpose.EnterProfile))
+                    if (result !is PinResult.Verified) {
+                        return@launch
+                    }
+                }
+
+                _uiState.update { it.copy(switching = true, error = false) }
+
                 try {
                     val success = activeProfileHolder.setActive(id)
                     if (!success) {

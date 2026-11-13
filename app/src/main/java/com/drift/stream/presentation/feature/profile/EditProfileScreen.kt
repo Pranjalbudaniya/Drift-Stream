@@ -7,8 +7,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -196,6 +198,16 @@ fun EditProfileContent(
                     },
                 )
 
+                Spacer(modifier = Modifier.height(NexusTheme.spacing.lg))
+
+                PinLockSection(
+                    isLocked = state.pinLockEnabled,
+                    actionError = state.pinActionError,
+                    onSetPin = { onEditEvent(EditProfileEvent.SetPinClicked) },
+                    onChangePin = { onEditEvent(EditProfileEvent.ChangePinClicked) },
+                    onRemovePin = { onEditEvent(EditProfileEvent.RemovePinClicked) },
+                )
+
                 if (state.canDelete) {
                     Spacer(modifier = Modifier.height(NexusTheme.spacing.md))
 
@@ -331,5 +343,103 @@ internal fun DeleteProfileDialogLightPreview() {
             onConfirm = {},
             onDismiss = {},
         )
+    }
+}
+
+@Composable
+fun PinLockSection(
+    isLocked: Boolean,
+    actionError: Boolean,
+    onSetPin: () -> Unit,
+    onChangePin: () -> Unit,
+    onRemovePin: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = NexusTheme.spacing
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text(
+                    text = stringResource(R.string.pin_lock_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text =
+                        if (isLocked) {
+                            stringResource(R.string.pin_lock_on)
+                        } else {
+                            stringResource(R.string.pin_lock_off)
+                        },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (isLocked) {
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                    NexusOutlinedButton(onClick = onChangePin) {
+                        Text(text = stringResource(R.string.pin_change_button))
+                    }
+                    NexusOutlinedButton(onClick = onRemovePin) {
+                        Text(text = stringResource(R.string.pin_remove_button))
+                    }
+                }
+            } else {
+                NexusOutlinedButton(onClick = onSetPin) {
+                    Text(text = stringResource(R.string.pin_set_button))
+                }
+            }
+        }
+
+        if (actionError) {
+            Spacer(modifier = Modifier.height(spacing.xs))
+            Text(
+                text = stringResource(R.string.pin_change_failed),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Preview(name = "PIN Lock - Off Light", showBackground = true)
+@Preview(name = "PIN Lock - Off Dark", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+internal fun PinLockSectionOffPreview() {
+    NexusTheme {
+        Surface {
+            PinLockSection(
+                isLocked = false,
+                actionError = false,
+                onSetPin = {},
+                onChangePin = {},
+                onRemovePin = {},
+                modifier = Modifier.padding(NexusTheme.spacing.md),
+            )
+        }
+    }
+}
+
+@Preview(name = "PIN Lock - On Light", showBackground = true)
+@Preview(name = "PIN Lock - On Dark", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+internal fun PinLockSectionOnPreview() {
+    NexusTheme {
+        Surface {
+            PinLockSection(
+                isLocked = true,
+                actionError = false,
+                onSetPin = {},
+                onChangePin = {},
+                onRemovePin = {},
+                modifier = Modifier.padding(NexusTheme.spacing.md),
+            )
+        }
     }
 }

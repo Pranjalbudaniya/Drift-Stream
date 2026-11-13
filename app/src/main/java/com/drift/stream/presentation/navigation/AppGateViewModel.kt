@@ -5,6 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.drift.stream.data.profile.ActiveProfileHolder
 import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.profile.CHOOSE_TIMEOUT_MS
+import com.drift.stream.domain.profile.PinChallenges
+import com.drift.stream.domain.profile.PinPurpose
+import com.drift.stream.domain.profile.PinRequest
+import com.drift.stream.domain.profile.PinResult
 import com.drift.stream.domain.profile.StartGate
 import com.drift.stream.domain.profile.decideStartGate
 import com.drift.stream.domain.repository.AppStateRepository
@@ -35,6 +39,7 @@ class AppGateViewModel
         profileRepository: ProfileRepository,
         private val activeProfileHolder: ActiveProfileHolder,
         appStateRepository: AppStateRepository,
+        private val pinChallenges: PinChallenges,
     ) : ViewModel() {
         private val choseThisSession = MutableStateFlow(false)
         private val isChoosing = MutableStateFlow(false)
@@ -94,10 +99,17 @@ class AppGateViewModel
 
         fun onProfileChosen(id: Long) {
             if (isChoosing.value) return
+            val profile = uiState.value.profiles.firstOrNull { it.id == id }
             isChoosing.value = true
             chooseFailed.value = false
             viewModelScope.launch {
                 try {
+                    if (profile?.isLocked == true) {
+                        val result = pinChallenges.ask(PinRequest.Verify(id, PinPurpose.EnterProfile))
+                        if (result !is PinResult.Verified) {
+                            return@launch
+                        }
+                    }
                     val ok = activeProfileHolder.setActive(id)
                     if (ok) {
                         withTimeout(CHOOSE_TIMEOUT_MS) {

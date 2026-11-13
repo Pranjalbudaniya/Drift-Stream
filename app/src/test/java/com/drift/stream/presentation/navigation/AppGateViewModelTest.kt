@@ -2,6 +2,10 @@ package com.drift.stream.presentation.navigation
 
 import com.drift.stream.data.profile.ActiveProfileHolder
 import com.drift.stream.domain.model.Profile
+import com.drift.stream.domain.profile.PinChallenges
+import com.drift.stream.domain.profile.PinPurpose
+import com.drift.stream.domain.profile.PinRequest
+import com.drift.stream.domain.profile.PinResult
 import com.drift.stream.domain.profile.StartGate
 import com.drift.stream.domain.repository.AppStateRepository
 import com.drift.stream.domain.repository.ProfileRepository
@@ -32,6 +36,7 @@ class AppGateViewModelTest {
     private val profileRepository = mockk<ProfileRepository>()
     private val activeProfileHolder = mockk<ActiveProfileHolder>()
     private val appStateRepository = mockk<AppStateRepository>()
+    private val pinChallenges = mockk<PinChallenges>()
 
     private val profilesFlow = MutableStateFlow<List<Profile>>(emptyList())
     private val activeProfileIdFlow = MutableStateFlow<Long?>(null)
@@ -55,6 +60,7 @@ class AppGateViewModelTest {
         name: String = "Profile $id",
         isOwner: Boolean = false,
         needsSetup: Boolean = false,
+        isLocked: Boolean = false,
     ): Profile =
         Profile(
             id = id,
@@ -63,6 +69,7 @@ class AppGateViewModelTest {
             avatarEmoji = null,
             isOwner = isOwner,
             needsSetup = needsSetup,
+            isLocked = isLocked,
             createdAt = 1000L,
             lastUsedAt = 1000L,
             sortOrder = id.toInt(),
@@ -73,6 +80,7 @@ class AppGateViewModelTest {
             profileRepository = profileRepository,
             activeProfileHolder = activeProfileHolder,
             appStateRepository = appStateRepository,
+            pinChallenges = pinChallenges,
         )
 
     @Test
@@ -196,5 +204,84 @@ class AppGateViewModelTest {
             testScheduler.advanceUntilIdle()
 
             assertEquals(listOf(p2, p1), vm.uiState.value.profiles)
+        }
+
+    @Test
+    fun GV7_chooseLockedProfile_requiresPin_thenEnters() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", isOwner = true)
+            val locked = sampleProfile(2L, "Asha", isOwner = false, isLocked = true)
+            activeProfileIdFlow.value = 1L
+            profilesFlow.value = listOf(owner, locked)
+
+            coEvery { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.EnterProfile)) } returns
+                PinResult.Verified("1234")
+            coEvery { activeProfileHolder.setActive(2L) } coAnswers {
+                activeProfileIdFlow.value = 2L
+                true
+            }
+
+            val vm = createViewModel()
+            testScheduler.advanceUntilIdle()
+            assertEquals(StartGate.Picker, vm.uiState.value.gate)
+
+            vm.onProfileChosen(2L)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.EnterProfile)) }
+            coVerify(exactly = 1) { activeProfileHolder.setActive(2L) }
+            assertEquals(StartGate.Enter, vm.uiState.value.gate)
+            assertFalse(vm.uiState.value.isChoosing)
+            assertFalse(vm.uiState.value.chooseFailed)
+        }
+
+    @Test
+    fun GV8_chooseLockedProfile_pinCancelled_staysOnPicker() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", isOwner = true)
+            val locked = sampleProfile(2L, "Asha", isOwner = false, isLocked = true)
+            activeProfileIdFlow.value = 1L
+            profilesFlow.value = listOf(owner, locked)
+
+            coEvery { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.EnterProfile)) } returns
+                PinResult.Cancelled
+
+            val vm = createViewModel()
+            testScheduler.advanceUntilIdle()
+            assertEquals(StartGate.Picker, vm.uiState.value.gate)
+
+            vm.onProfileChosen(2L)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.EnterProfile)) }
+            coVerify(exactly = 0) { activeProfileHolder.setActive(any()) }
+            assertEquals(StartGate.Picker, vm.uiState.value.gate)
+            assertFalse(vm.uiState.value.isChoosing)
+            assertFalse(vm.uiState.value.chooseFailed)
+        }
+
+    @Test
+    fun GV9_chooseUnlockedProfile_noPinChallenge() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", isOwner = true)
+            val unlocked = sampleProfile(2L, "Asha", isOwner = false, isLocked = false)
+            activeProfileIdFlow.value = 1L
+            profilesFlow.value = listOf(owner, unlocked)
+
+            coEvery { activeProfileHolder.setActive(2L) } coAnswers {
+                activeProfileIdFlow.value = 2L
+                true
+            }
+
+            val vm = createViewModel()
+            testScheduler.advanceUntilIdle()
+            assertEquals(StartGate.Picker, vm.uiState.value.gate)
+
+            vm.onProfileChosen(2L)
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 0) { pinChallenges.ask(any()) }
+            coVerify(exactly = 1) { activeProfileHolder.setActive(2L) }
+            assertEquals(StartGate.Enter, vm.uiState.value.gate)
         }
 }

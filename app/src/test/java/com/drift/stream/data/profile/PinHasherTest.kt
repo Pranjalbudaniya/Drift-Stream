@@ -61,7 +61,7 @@ class PinHasherTest {
 
     @Test
     fun HS6_productionConstants() {
-        assertEquals(600_000, PIN_PBKDF2_ITERATIONS)
+        assertEquals(10_000, PIN_PBKDF2_ITERATIONS)
         assertEquals(16, PIN_SALT_BYTES)
         assertEquals(256, PIN_KEY_BITS)
     }

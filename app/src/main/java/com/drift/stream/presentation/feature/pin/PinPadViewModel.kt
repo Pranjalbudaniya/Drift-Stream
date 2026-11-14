@@ -68,6 +68,7 @@ data class PinPadUiState(
     val forgot: ForgotState? = null,
     val isVerify: Boolean = false,
     val holding: Boolean = false,
+    val rejectCount: Int = 0,
 )
 
 sealed interface PinPadEvent {
@@ -325,12 +326,14 @@ class PinPadViewModel
                         it.copy(
                             dotCount = 0,
                             message = PinMessage.Wrong(result.triesLeft),
+                            rejectCount = it.rejectCount + 1,
                         )
                     }
                 }
 
                 is VerifyResult.Locked -> {
                     typedDigits.clear()
+                    _uiState.update { it.copy(rejectCount = it.rejectCount + 1) }
                     startCountdown(result.remainingMs)
                 }
 

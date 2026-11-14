@@ -2,6 +2,12 @@ package com.drift.stream.presentation.feature.pin
 
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -31,10 +38,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -68,6 +78,19 @@ private const val DISABLED_ALPHA = 0.38f
 private const val DIGIT_BG_ALPHA_ENABLED = 0.6f
 private const val DIGIT_BG_ALPHA_DISABLED = 0.2f
 private const val PREVIEW_CONFIRM_DOT_COUNT = 4
+private const val TITLE_CROSSFADE_MS = 150
+private const val SHAKE_DURATION_MS = 280
+private const val SHAKE_AMP_1 = 16f
+private const val SHAKE_AMP_2 = 12f
+private const val SHAKE_AMP_3 = 8f
+private const val SHAKE_AMP_4 = 4f
+private const val SHAKE_STEP_1_MS = 35
+private const val SHAKE_STEP_2_MS = 70
+private const val SHAKE_STEP_3_MS = 105
+private const val SHAKE_STEP_4_MS = 140
+private const val SHAKE_STEP_5_MS = 175
+private const val SHAKE_STEP_6_MS = 210
+private const val SHAKE_STEP_7_MS = 245
 
 @Composable
 fun PinPadScreen(
@@ -99,6 +122,30 @@ internal fun PinPadContent(
     modifier: Modifier = Modifier,
 ) {
     val spacing = NexusTheme.spacing
+    val haptic = LocalHapticFeedback.current
+    val shakeOffset = remember { Animatable(0f) }
+
+    LaunchedEffect(uiState.rejectCount) {
+        if (uiState.rejectCount > 0) {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            shakeOffset.snapTo(0f)
+            shakeOffset.animateTo(
+                targetValue = 0f,
+                animationSpec =
+                    keyframes {
+                        durationMillis = SHAKE_DURATION_MS
+                        -SHAKE_AMP_1 at SHAKE_STEP_1_MS using FastOutLinearInEasing
+                        SHAKE_AMP_1 at SHAKE_STEP_2_MS using LinearOutSlowInEasing
+                        -SHAKE_AMP_2 at SHAKE_STEP_3_MS using FastOutLinearInEasing
+                        SHAKE_AMP_2 at SHAKE_STEP_4_MS using LinearOutSlowInEasing
+                        -SHAKE_AMP_3 at SHAKE_STEP_5_MS using FastOutLinearInEasing
+                        SHAKE_AMP_3 at SHAKE_STEP_6_MS using LinearOutSlowInEasing
+                        -SHAKE_AMP_4 at SHAKE_STEP_7_MS using FastOutLinearInEasing
+                        0f at SHAKE_DURATION_MS
+                    },
+            )
+        }
+    }
 
     Surface(
         modifier =
@@ -141,9 +188,11 @@ internal fun PinPadContent(
                 )
             Row(
                 modifier =
-                    Modifier.semantics {
-                        contentDescription = dotsDesc
-                    },
+                    Modifier
+                        .offset(x = shakeOffset.value.dp)
+                        .semantics {
+                            contentDescription = dotsDesc
+                        },
                 horizontalArrangement = Arrangement.spacedBy(PIN_DOT_SPACING),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -264,16 +313,22 @@ private fun PinHeader(uiState: PinPadUiState) {
             textAlign = TextAlign.Center,
         )
     } else {
-        Text(
-            text =
-                if (uiState.titleKind == PinTitleKind.CreatePin) {
-                    stringResource(R.string.pin_create_title)
-                } else {
-                    stringResource(R.string.pin_confirm_title)
-                },
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
+        Crossfade(
+            targetState = uiState.titleKind,
+            animationSpec = tween(durationMillis = TITLE_CROSSFADE_MS),
+            label = "PinCreateTitleCrossfade",
+        ) { kind ->
+            Text(
+                text =
+                    if (kind == PinTitleKind.CreatePin) {
+                        stringResource(R.string.pin_create_title)
+                    } else {
+                        stringResource(R.string.pin_confirm_title)
+                    },
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        }
         Spacer(modifier = Modifier.height(spacing.xs))
         Text(
             text = stringResource(R.string.pin_choose_length_hint),
@@ -420,6 +475,7 @@ private fun PinKeyButton(
     hasBackground: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val haptic = LocalHapticFeedback.current
     val bgAlpha = if (enabled) DIGIT_BG_ALPHA_ENABLED else DIGIT_BG_ALPHA_DISABLED
     val bgColor =
         if (hasBackground) {
@@ -437,8 +493,14 @@ private fun PinKeyButton(
                     .size(PIN_KEY_SIZE)
                     .clip(CircleShape)
                     .background(bgColor)
-                    .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-                    .semantics {
+                    .clickable(
+                        enabled = enabled,
+                        role = Role.Button,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onClick()
+                        },
+                    ).semantics {
                         role = Role.Button
                         this.contentDescription = contentDescription
                     },

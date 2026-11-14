@@ -144,6 +144,7 @@ class ProfileRepositoryAvatarTest {
         assertFalse(profileString.contains("SECRETHASH"))
         assertFalse(profileString.contains("SECRETSALT"))
         assertFalse(profileString.contains("600000"))
+        assertFalse(profileString.contains("10000"))
         assertFalse(profileString.contains("123456789"))
     }
 }

@@ -9,6 +9,7 @@ import com.drift.stream.domain.profile.triesLeft
 import com.drift.stream.domain.repository.ProfilePinRepository
 import com.drift.stream.domain.repository.SetPinResult
 import com.drift.stream.domain.repository.VerifyResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -66,6 +67,17 @@ class ProfilePinRepositoryImpl
                     val isCorrect = pinHasher.verify(pin, salt, iterations, hash)
                     if (isCorrect) {
                         profileDao.resetPinFailures(profileId)
+                        if (iterations != pinHasher.defaultIterations) {
+                            try {
+                                val newSalt = pinHasher.generateSalt()
+                                val newHash = pinHasher.hash(pin, newSalt, pinHasher.defaultIterations)
+                                profileDao.setPin(profileId, newHash, newSalt, pinHasher.defaultIterations)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                // A failure to re-hash must never turn a correct PIN into a failure
+                            }
+                        }
                         VerifyResult.Correct
                     } else {
                         val attempts = (row.pinFailedAttempts ?: 0) + 1

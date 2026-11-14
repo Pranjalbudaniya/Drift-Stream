@@ -427,4 +427,62 @@ class ProfilePinRepositoryTest {
 
             assertEquals(2, dao.getPinRow(1L)?.pinFailedAttempts)
         }
+
+    @Test
+    fun PV13_verify_correct_withOlderIterations_rehashesToCurrent() =
+        testScope.runTest {
+            val salt500 = hasher.generateSalt()
+            val hash500 = hasher.hash("1234", salt500, iterations = 500)
+            dao.setPin(1L, hash500, salt500, iterations = 500)
+
+            val result = repository.verify(1L, "1234")
+            assertEquals(VerifyResult.Correct, result)
+
+            val updatedRow = dao.getPinRow(1L)
+            assertNotNull(updatedRow)
+            assertEquals(1_000, updatedRow?.pinIterations)
+            assertFalse(salt500 == updatedRow?.pinSalt)
+            assertFalse(hash500 == updatedRow?.pinHash)
+
+            val secondVerify = repository.verify(1L, "1234")
+            assertEquals(VerifyResult.Correct, secondVerify)
+        }
+
+    @Test
+    fun PV14_verify_correct_withCurrentIterations_doesNotRehash() =
+        testScope.runTest {
+            repository.setPin(1L, "1234")
+            val initialRow = dao.getPinRow(1L)
+            assertNotNull(initialRow)
+            assertEquals(1_000, initialRow?.pinIterations)
+            val initialSalt = initialRow?.pinSalt
+            val initialHash = initialRow?.pinHash
+            val callCountBefore = hasher.verifyCallCount
+
+            val result = repository.verify(1L, "1234")
+            assertEquals(VerifyResult.Correct, result)
+
+            assertEquals(callCountBefore + 1, hasher.verifyCallCount)
+            val afterRow = dao.getPinRow(1L)
+            assertEquals(initialSalt, afterRow?.pinSalt)
+            assertEquals(initialHash, afterRow?.pinHash)
+            assertEquals(1_000, afterRow?.pinIterations)
+        }
+
+    @Test
+    fun PV15_verify_wrong_neverRehashes() =
+        testScope.runTest {
+            val salt500 = hasher.generateSalt()
+            val hash500 = hasher.hash("1234", salt500, iterations = 500)
+            dao.setPin(1L, hash500, salt500, iterations = 500)
+
+            val result = repository.verify(1L, "9999")
+            assertTrue(result is VerifyResult.Wrong)
+
+            val row = dao.getPinRow(1L)
+            assertEquals(500, row?.pinIterations)
+            assertEquals(salt500, row?.pinSalt)
+            assertEquals(hash500, row?.pinHash)
+            assertEquals(1, row?.pinFailedAttempts)
+        }
 }

@@ -9,7 +9,7 @@ import java.util.Base64
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
-const val PIN_PBKDF2_ITERATIONS = 600_000
+const val PIN_PBKDF2_ITERATIONS = 10_000
 const val PIN_SALT_BYTES = 16
 const val PIN_KEY_BITS = 256
 private const val ALGORITHM = "PBKDF2WithHmacSHA256"

@@ -355,6 +355,51 @@ class PinPadViewModelTest {
         }
 
     @Test
+    fun PP16_wrongOrLocked_incrementsRejectCount() =
+        testScope.runTest {
+            coEvery { profilePinRepository.verify(1L, "1234") } returns VerifyResult.Wrong(3)
+            coEvery { profilePinRepository.verify(1L, "5678") } returns VerifyResult.Locked(30_000L)
+
+            val viewModel = createViewModel()
+            viewModel.initialize(PendingPin(1L, PinRequest.Verify(1L, PinPurpose.EnterProfile)))
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(0, viewModel.uiState.value.rejectCount)
+
+            "1234".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(1, viewModel.uiState.value.rejectCount)
+
+            "5678".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(2, viewModel.uiState.value.rejectCount)
+        }
+
+    @Test
+    fun PP17_correct_andCancel_doNotIncrementRejectCount() =
+        testScope.runTest {
+            coEvery { profilePinRepository.verify(1L, "1234") } returns VerifyResult.Correct
+
+            val viewModel = createViewModel()
+            viewModel.initialize(PendingPin(1L, PinRequest.Verify(1L, PinPurpose.EnterProfile)))
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(0, viewModel.uiState.value.rejectCount)
+
+            "1234".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(0, viewModel.uiState.value.rejectCount)
+
+            viewModel.onEvent(PinPadEvent.Cancel)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(0, viewModel.uiState.value.rejectCount)
+        }
+
+    @Test
     fun FP1_forgotPin_ownerPad_showsEraseConfirmation() =
         testScope.runTest {
             coEvery { profileRepository.get(1L) } returns sampleProfile(1L).copy(isOwner = true)

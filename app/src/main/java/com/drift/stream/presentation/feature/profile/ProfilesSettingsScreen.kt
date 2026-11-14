@@ -55,6 +55,7 @@ fun ProfilesSettingsScreen(
     onProfileClick: (Long) -> Unit,
     onAddProfileClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onExportAllClick: () -> Unit = {},
     viewModel: ProfilesSettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -64,6 +65,7 @@ fun ProfilesSettingsScreen(
         onNavigateUp = onNavigateUp,
         onProfileClick = onProfileClick,
         onAddProfileClick = onAddProfileClick,
+        onExportAllClick = onExportAllClick,
         modifier = modifier,
     )
 }
@@ -76,6 +78,7 @@ fun ProfilesSettingsContent(
     onProfileClick: (Long) -> Unit,
     onAddProfileClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onExportAllClick: () -> Unit = {},
     onEvent: (ProfilesSettingsEvent) -> Unit = {},
 ) {
     val spacing = NexusTheme.spacing
@@ -118,6 +121,36 @@ fun ProfilesSettingsContent(
                         onCheckedChange = { onEvent(ProfilesSettingsEvent.SetAlwaysShowPicker(it)) },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.md, vertical = spacing.sm),
                     )
+                }
+            }
+
+            if (uiState.canManage) {
+                item(key = "export_all_profiles") {
+                    NexusCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .defaultMinSize(minHeight = ROW_MIN_HEIGHT)
+                                    .clickable(
+                                        role = Role.Button,
+                                        onClick = onExportAllClick,
+                                    ).padding(horizontal = spacing.md, vertical = spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.export_all_profiles),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
 

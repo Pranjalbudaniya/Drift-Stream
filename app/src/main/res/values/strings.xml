@@ -1061,5 +1061,46 @@
     <string name="pin_forgot_others_dialog_message">Ask the owner to reset your PIN. In the owner profile open Settings → Manage profiles → your profile → Reset PIN.</string>
     <string name="pin_forgot_erase_failed">Couldn\'t erase. Clear the app\'s data in Android Settings instead.</string>
     <string name="dialog_ok">OK</string>
+
+    <!-- P22a: Export User Data -->
+    <string name="export_data_title">Export data</string>
+    <string name="export_all_profiles">Export all profiles</string>
+    <string name="export_profile_title">Export %1$s</string>
+    <string name="export_this_profile_data">Export this profile\'s data</string>
+    <string name="export_included_heading">Included</string>
+    <string name="export_included_watchlist_library">Watchlist and library</string>
+    <string name="export_included_watch_history_progress">Watch history and progress</string>
+    <string name="export_included_settings">Settings</string>
+    <string name="export_option_search_history">Search history</string>
+    <string name="export_option_addons">Add-ons</string>
+    <string name="export_addons_warning">Add-on addresses can contain personal keys. Anyone who gets the file can use them. Keep the file private.</string>
+    <string name="export_unencrypted_notice">The file is not encrypted. PINs are never included.</string>
+    <string name="export_button">Export</string>
+    <string name="export_exporting">Exporting…</string>
+    <string name="export_done">Done</string>
+    <string name="export_error_generic">Couldn\'t write the file. Try again.</string>
+    <string name="export_error_too_large">The backup is too large.</string>
+    <string name="export_try_again">Try again</string>
+
+    <plurals name="export_summary_profiles">
+        <item quantity="one">%d profile</item>
+        <item quantity="other">%d profiles</item>
+    </plurals>
+    <plurals name="export_summary_library">
+        <item quantity="one">%d library item</item>
+        <item quantity="other">%d library items</item>
+    </plurals>
+    <plurals name="export_summary_history">
+        <item quantity="one">%d history entry</item>
+        <item quantity="other">%d history entries</item>
+    </plurals>
+    <plurals name="export_summary_searches">
+        <item quantity="one">%d search</item>
+        <item quantity="other">%d searches</item>
+    </plurals>
+    <plurals name="export_summary_addons">
+        <item quantity="one">%d add-on</item>
+        <item quantity="other">%d add-ons</item>
+    </plurals>
 </resources>
 

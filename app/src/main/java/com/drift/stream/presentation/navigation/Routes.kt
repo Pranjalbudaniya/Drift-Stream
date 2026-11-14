@@ -42,3 +42,11 @@ data class ProfileEdit(
 
 @Serializable
 data object ProfileAdd
+
+@Serializable
+data class ExportProfile(
+    val profileId: Long,
+)
+
+@Serializable
+data object ExportAll

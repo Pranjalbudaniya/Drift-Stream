@@ -17,6 +17,7 @@ import com.drift.stream.domain.profile.DeleteHost
 import com.drift.stream.domain.profile.canManageProfiles
 import com.drift.stream.domain.profile.tabsToClearOnSwitch
 import com.drift.stream.presentation.feature.addons.AddonManagerScreen
+import com.drift.stream.presentation.feature.backup.ExportDataScreen
 import com.drift.stream.presentation.feature.detail.DetailScreen
 import com.drift.stream.presentation.feature.discover.DiscoverScreen
 import com.drift.stream.presentation.feature.downloads.DownloadsScreen
@@ -137,6 +138,9 @@ fun NexusNavHost(
                 onAddProfileClick = {
                     navController.navigate(ProfileAdd)
                 },
+                onExportAllClick = {
+                    navController.navigate(ExportAll)
+                },
                 viewModel = viewModel,
             )
         }
@@ -148,6 +152,19 @@ fun NexusNavHost(
                 onBack = { navController.navigateUp() },
                 onDone = { navController.navigateUp() },
                 onDelete = { navController.navigateUp() },
+                onExportClick = { profileId ->
+                    navController.navigate(ExportProfile(profileId = profileId))
+                },
+            )
+        }
+        composable<ExportProfile> {
+            ExportDataScreen(
+                onBack = { navController.navigateUp() },
+            )
+        }
+        composable<ExportAll> {
+            ExportDataScreen(
+                onBack = { navController.navigateUp() },
             )
         }
         composable<ProfileAdd> {

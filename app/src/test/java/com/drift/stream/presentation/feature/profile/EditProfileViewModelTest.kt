@@ -49,80 +49,7 @@ import java.time.Instant
 import java.time.ZoneId
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class EditProfileViewModelTest {
-    @get:Rule
-    val tempFolder = TemporaryFolder()
-
-    private val testDispatcher = StandardTestDispatcher()
-    private val testScope = TestScope(testDispatcher)
-
-    private val profileRepository = mockk<ProfileRepository>()
-    private val activeProfileHolder = mockk<ActiveProfileHolder>()
-    private val avatarPhotoStore = mockk<AvatarPhotoStore>(relaxed = true)
-    private val avatarPhotoPipeline = mockk<AvatarPhotoPipeline>(relaxed = true)
-    private val profilePinManager = mockk<ProfilePinManager>()
-    private val pinChallenges = mockk<PinChallenges>()
-
-    private val profilesFlow = MutableStateFlow<List<Profile>>(emptyList())
-    private val activeProfileIdFlow = MutableStateFlow<Long?>(null)
-
-    private val fixedInstant = Instant.ofEpochMilli(1_700_000_000_000L)
-    private val fixedClock: Clock = Clock.fixed(fixedInstant, ZoneId.of("UTC"))
-
-    @Before
-    fun setUp() {
-        Dispatchers.setMain(testDispatcher)
-        every { profileRepository.profiles } returns profilesFlow
-        every { activeProfileHolder.activeProfileId } returns activeProfileIdFlow
-    }
-
-    @After
-    fun tearDown() {
-        Dispatchers.resetMain()
-    }
-
-    private fun sampleProfile(
-        id: Long,
-        name: String,
-        stamp: Long? = null,
-        isLocked: Boolean = false,
-    ): Profile =
-        Profile(
-            id = id,
-            name = name,
-            avatarColor = 0,
-            avatarEmoji = null,
-            avatarPhotoStamp = stamp,
-            isOwner = id == 1L,
-            needsSetup = false,
-            isLocked = isLocked,
-            createdAt = 1000L,
-            lastUsedAt = 1000L,
-            sortOrder = id.toInt(),
-        )
-
-    private fun createViewModel(
-        profileId: Long? = null,
-        host: DeleteHost = DeleteHost.Picker,
-        clock: Clock = fixedClock,
-    ): EditProfileViewModel {
-        val savedStateHandle =
-            SavedStateHandle().apply {
-                if (profileId != null) {
-                    set("profileId", profileId)
-                    set("host", host.name)
-                }
-            }
-        return EditProfileViewModel(
-            profileRepository = profileRepository,
-            activeProfileHolder = activeProfileHolder,
-            photoServices = AvatarPhotoServices(avatarPhotoStore, avatarPhotoPipeline),
-            savedStateHandle = savedStateHandle,
-            pinOps = ProfilePinOps(profilePinManager, pinChallenges),
-            clock = clock,
-        )
-    }
-
+class EditProfileViewModelTest : EditProfileTestFixture() {
     @Test
     fun EV1_save_updatesNameAndAvatar_withTrimmedName() =
         testScope.runTest {
@@ -760,5 +687,22 @@ class EditProfileViewModelTest {
 
             coVerify(exactly = 0) { pinChallenges.ask(any()) }
             coVerify(exactly = 1) { profileRepository.delete(2L) }
+        }
+
+    @Test
+    fun EV27_exportRow_shownOnlyInSettingsHost() =
+        testScope.runTest {
+            val profile = sampleProfile(1L, "Alice")
+            profilesFlow.value = listOf(profile)
+            activeProfileIdFlow.value = 1L
+            coEvery { profileRepository.get(1L) } returns profile
+
+            val settingsVm = createViewModel(1L, host = DeleteHost.Settings)
+            testScheduler.advanceUntilIdle()
+            assertTrue(settingsVm.uiState.value.canExport)
+
+            val pickerVm = createViewModel(1L, host = DeleteHost.Picker)
+            testScheduler.advanceUntilIdle()
+            assertFalse(pickerVm.uiState.value.canExport)
         }
 }

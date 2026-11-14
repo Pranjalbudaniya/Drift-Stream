@@ -52,10 +52,12 @@ class FakeAddonDao : AddonDao {
                 .sortedBy { it.position }
         }
 
-    override suspend fun getAll(profileId: Long): List<AddonEntity> =
+    override suspend fun getAllForProfile(profileId: Long): List<AddonEntity> =
         addons.value.values
             .filter { it.profileId == profileId }
             .sortedBy { it.position }
+
+    suspend fun getAll(profileId: Long): List<AddonEntity> = getAllForProfile(profileId)
 
     suspend fun getAll(): List<AddonEntity> = getAll(1L)
 

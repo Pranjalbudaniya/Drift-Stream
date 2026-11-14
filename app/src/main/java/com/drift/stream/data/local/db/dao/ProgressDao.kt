@@ -47,6 +47,9 @@ interface ProgressDao {
         key: String,
     ): WatchProgressEntity?
 
+    @Query("SELECT * FROM watch_progress WHERE profileId = :profileId")
+    suspend fun getAllForProfile(profileId: Long): List<WatchProgressEntity>
+
     @Upsert
     suspend fun upsert(entity: WatchProgressEntity)
 

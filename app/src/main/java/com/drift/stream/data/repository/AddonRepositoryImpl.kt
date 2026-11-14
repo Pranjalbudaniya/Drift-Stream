@@ -143,7 +143,7 @@ class AddonRepositoryImpl(
                                     manifestJson = fetched.rawJson,
                                 )
                             } else {
-                                val currentCount = addonDao.getAll(profileId).size
+                                val currentCount = addonDao.getAllForProfile(profileId).size
                                 AddonEntity(
                                     transportUrl = normalizedBaseUrl,
                                     id = manifest.id,
@@ -242,7 +242,7 @@ class AddonRepositoryImpl(
         transactionRunner.run {
             if (addonDao.get(profileId, normalizedBaseUrl) == null) return@run
             addonDao.delete(profileId, normalizedBaseUrl)
-            val remaining = addonDao.getAll(profileId)
+            val remaining = addonDao.getAllForProfile(profileId)
             val renumbered =
                 remaining.mapIndexed { index, entity ->
                     entity.copy(position = index)
@@ -270,7 +270,7 @@ class AddonRepositoryImpl(
         val normalizedBaseUrl = AddonUrlBuilder.normalize(transportUrl)?.toString() ?: transportUrl
         val profileId = activeProfile.requireId()
         transactionRunner.run {
-            val all = addonDao.getAll(profileId)
+            val all = addonDao.getAllForProfile(profileId)
             val urls = all.map { it.transportUrl }
             if (normalizedBaseUrl !in urls) return@run
 

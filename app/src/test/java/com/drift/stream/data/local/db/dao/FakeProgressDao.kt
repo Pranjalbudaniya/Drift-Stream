@@ -74,6 +74,9 @@ class FakeProgressDao(
 
     suspend fun get(key: String): WatchProgressEntity? = get(1L, key)
 
+    override suspend fun getAllForProfile(profileId: Long): List<WatchProgressEntity> =
+        progressEntities.value.values.filter { it.profileId == profileId }
+
     override suspend fun upsert(entity: WatchProgressEntity) {
         val current = progressEntities.value.toMutableMap()
         current[progressKey(entity.profileId, entity.key)] = entity

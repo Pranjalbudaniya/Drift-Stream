@@ -13,7 +13,7 @@ interface AddonDao {
     fun observeAll(profileId: Long): Flow<List<AddonEntity>>
 
     @Query("SELECT * FROM addons WHERE profileId = :profileId ORDER BY position ASC")
-    suspend fun getAll(profileId: Long): List<AddonEntity>
+    suspend fun getAllForProfile(profileId: Long): List<AddonEntity>
 
     @Query("SELECT * FROM addons WHERE profileId = :profileId AND transportUrl = :transportUrl")
     suspend fun get(

@@ -102,5 +102,13 @@ class AppStateRepositoryImpl
             val DEFAULT_ADDONS_SEEDED_PROFILES_KEY = stringSetPreferencesKey("default_addons_seeded_profiles")
             val LAST_ACTIVE_PROFILE_ID_KEY = longPreferencesKey("last_active_profile_id")
             val ALWAYS_SHOW_PICKER_KEY = booleanPreferencesKey("always_show_picker")
+
+            val DEVICE_WIDE_KEYS: List<Preferences.Key<*>> =
+                listOf(
+                    DEFAULT_ADDONS_SEEDED_KEY,
+                    DEFAULT_ADDONS_SEEDED_PROFILES_KEY,
+                    LAST_ACTIVE_PROFILE_ID_KEY,
+                    ALWAYS_SHOW_PICKER_KEY,
+                )
         }
     }

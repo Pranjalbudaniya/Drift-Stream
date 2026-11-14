@@ -283,5 +283,25 @@ class PlayerPrefsRepositoryImpl
             val KEY_SUBTITLE_BACKGROUND = stringPreferencesKey("subtitle_background")
             val KEY_SUBTITLE_EDGE = stringPreferencesKey("subtitle_edge")
             val KEY_SUBTITLE_BOLD = booleanPreferencesKey("subtitle_bold")
+
+            val PERSONAL_KEYS: List<Preferences.Key<*>> =
+                listOf(
+                    KEY_QUICK_PLAY,
+                    KEY_AUTO_PLAY_NEXT,
+                    KEY_PIP_ON_HOME,
+                    KEY_STREAM_SORT,
+                    KEY_PREFERRED_LANGUAGE,
+                    KEY_PREFERRED_QUALITY,
+                    KEY_HIDE_CAM,
+                    KEY_SEEK_STEP_SECONDS,
+                    KEY_VIDEO_SCALE,
+                    KEY_PREFERRED_AUDIO_LANGUAGE,
+                    KEY_PREFERRED_SUBTITLE_LANGUAGE,
+                    KEY_SUBTITLE_SIZE,
+                    KEY_SUBTITLE_COLOR,
+                    KEY_SUBTITLE_BACKGROUND,
+                    KEY_SUBTITLE_EDGE,
+                    KEY_SUBTITLE_BOLD,
+                )
         }
     }

@@ -15,6 +15,9 @@ interface SearchHistoryDao {
     @Query("SELECT * FROM search_history WHERE profileId = :profileId ORDER BY lastUsedAt DESC")
     suspend fun getAll(profileId: Long): List<SearchHistoryEntity>
 
+    @Query("SELECT * FROM search_history WHERE profileId = :profileId ORDER BY lastUsedAt DESC")
+    suspend fun getAllForProfile(profileId: Long): List<SearchHistoryEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: SearchHistoryEntity)
 

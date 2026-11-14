@@ -32,6 +32,9 @@ class FakeLibraryDao : LibraryDao {
 
     suspend fun get(metaId: String): LibraryItemEntity? = get(1L, metaId)
 
+    override suspend fun getAllForProfile(profileId: Long): List<LibraryItemEntity> =
+        items.value.values.filter { it.profileId == profileId }
+
     override suspend fun upsert(entity: LibraryItemEntity) {
         val current = items.value.toMutableMap()
         current[libraryKey(entity.profileId, entity.metaId)] = entity

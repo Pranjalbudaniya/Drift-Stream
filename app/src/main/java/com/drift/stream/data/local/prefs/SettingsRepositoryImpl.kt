@@ -121,6 +121,21 @@ class SettingsRepositoryImpl
             val KEY_CARD_STYLE = stringPreferencesKey("card_style")
             val KEY_CONTRAST = stringPreferencesKey("contrast_level")
 
+            val PERSONAL_KEYS: List<Preferences.Key<*>> =
+                listOf(
+                    KEY_THEME_MODE,
+                    KEY_DYNAMIC_COLOR,
+                    KEY_AMOLED,
+                    KEY_ACCENT_COLOR,
+                    KEY_RECENT_ACCENTS,
+                    KEY_FONT,
+                    KEY_UI_SIZE,
+                    KEY_TEXT_SIZE,
+                    KEY_ROUNDNESS,
+                    KEY_CARD_STYLE,
+                    KEY_CONTRAST,
+                )
+
             inline fun <reified E : Enum<E>> Preferences.readEnum(
                 key: Preferences.Key<String>,
                 default: E,

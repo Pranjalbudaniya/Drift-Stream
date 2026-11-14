@@ -68,10 +68,17 @@ class TorrentPrefsRepositoryImpl
             }
         }
 
-        private companion object {
+        companion object {
             const val DEFAULT_CACHE_LIMIT_GB = 2
             val KEY_WIFI_ONLY_TORRENTS = booleanPreferencesKey("wifiOnlyTorrents")
             val KEY_CACHE_LIMIT_GB = intPreferencesKey("cacheLimitGb")
             val KEY_CLEAR_CACHE_ON_EXIT = booleanPreferencesKey("clearCacheOnExit")
+
+            val DEVICE_WIDE_KEYS: List<Preferences.Key<*>> =
+                listOf(
+                    KEY_WIFI_ONLY_TORRENTS,
+                    KEY_CACHE_LIMIT_GB,
+                    KEY_CLEAR_CACHE_ON_EXIT,
+                )
         }
     }

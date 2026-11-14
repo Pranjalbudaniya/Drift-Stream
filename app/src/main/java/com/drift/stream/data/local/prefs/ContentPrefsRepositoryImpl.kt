@@ -42,5 +42,10 @@ class ContentPrefsRepositoryImpl
 
         companion object {
             val KEY_FAMILY_MODE = booleanPreferencesKey("family_mode")
+
+            val PERSONAL_KEYS: List<Preferences.Key<*>> =
+                listOf(
+                    KEY_FAMILY_MODE,
+                )
         }
     }

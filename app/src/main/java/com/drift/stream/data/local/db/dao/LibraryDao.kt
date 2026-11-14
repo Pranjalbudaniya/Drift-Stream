@@ -25,6 +25,9 @@ interface LibraryDao {
         metaId: String,
     ): LibraryItemEntity?
 
+    @Query("SELECT * FROM library_items WHERE profileId = :profileId")
+    suspend fun getAllForProfile(profileId: Long): List<LibraryItemEntity>
+
     @Upsert
     suspend fun upsert(entity: LibraryItemEntity)
 

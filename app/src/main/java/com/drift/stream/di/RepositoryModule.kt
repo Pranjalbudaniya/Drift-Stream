@@ -1,5 +1,6 @@
 package com.drift.stream.di
 
+import com.drift.stream.data.backup.DefaultBackupExporter
 import com.drift.stream.data.local.prefs.AppStateRepositoryImpl
 import com.drift.stream.data.local.prefs.ContentPrefsRepositoryImpl
 import com.drift.stream.data.local.prefs.PlayerPrefsRepositoryImpl
@@ -18,6 +19,7 @@ import com.drift.stream.data.repository.MetaRepositoryImpl
 import com.drift.stream.data.repository.ProgressRepositoryImpl
 import com.drift.stream.data.repository.SearchHistoryRepositoryImpl
 import com.drift.stream.data.repository.StreamRepositoryImpl
+import com.drift.stream.domain.backup.BackupExporter
 import com.drift.stream.domain.model.PlaybackCapabilities
 import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.AddonRepository
@@ -107,6 +109,10 @@ interface RepositoryModule {
     @Binds
     @Singleton
     fun bindActiveProfileProvider(impl: ActiveProfileHolder): ActiveProfileProvider
+
+    @Binds
+    @Singleton
+    fun bindBackupExporter(impl: DefaultBackupExporter): BackupExporter
 
     companion object {
         @Provides

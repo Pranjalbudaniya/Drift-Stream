@@ -110,7 +110,11 @@ class AppGateViewModel
             viewModelScope.launch {
                 try {
                     if (profile?.isLocked == true) {
-                        val result = pinChallenges.ask(PinRequest.Verify(id, PinPurpose.EnterProfile))
+                        val result =
+                            pinChallenges.ask(
+                                PinRequest.Verify(id, PinPurpose.EnterProfile),
+                                holdUntilReleased = true,
+                            )
                         if (result !is PinResult.Verified) {
                             return@launch
                         }
@@ -129,6 +133,9 @@ class AppGateViewModel
                 } catch (ignored: IllegalStateException) {
                     chooseFailed.value = true
                 } finally {
+                    if (profile?.isLocked == true) {
+                        pinChallenges.release(id)
+                    }
                     isChoosing.value = false
                 }
             }

@@ -10,6 +10,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -108,6 +109,92 @@ class PinChallengesTest {
             job.cancel()
             testScheduler.advanceUntilIdle()
 
+            assertNull(challenges.pending.value)
+        }
+
+    @Test
+    fun CC5_holdUntilReleased_keepsPendingAfterFinish() =
+        testScope.runTest {
+            val challenges = DefaultPinChallenges()
+            val deferredResult =
+                async {
+                    challenges.ask(PinRequest.Verify(1L, PinPurpose.EnterProfile), holdUntilReleased = true)
+                }
+            testScheduler.runCurrent()
+
+            val pending = challenges.pending.value
+            requireNotNull(pending)
+
+            challenges.finish(pending.id, PinResult.Verified("1234"))
+            testScheduler.runCurrent()
+
+            assertEquals(PinResult.Verified("1234"), deferredResult.await())
+            assertNotNull(challenges.pending.value)
+            assertEquals(pending.id, challenges.pending.value?.id)
+        }
+
+    @Test
+    fun CC6_release_clearsPending() =
+        testScope.runTest {
+            val challenges = DefaultPinChallenges()
+            val deferredResult =
+                async {
+                    challenges.ask(PinRequest.Verify(1L, PinPurpose.EnterProfile), holdUntilReleased = true)
+                }
+            testScheduler.runCurrent()
+
+            val pending = challenges.pending.value
+            requireNotNull(pending)
+
+            challenges.finish(pending.id, PinResult.Verified("1234"))
+            testScheduler.runCurrent()
+
+            assertEquals(PinResult.Verified("1234"), deferredResult.await())
+            assertNotNull(challenges.pending.value)
+
+            challenges.release(pending.id)
+            assertNull(challenges.pending.value)
+
+            // Also: a cancelled caller releases the held request
+            val job =
+                launch {
+                    challenges.ask(PinRequest.Verify(2L, PinPurpose.EnterProfile), holdUntilReleased = true)
+                    kotlinx.coroutines.awaitCancellation()
+                }
+            testScheduler.runCurrent()
+            val secondPending = challenges.pending.value
+            requireNotNull(secondPending)
+
+            challenges.finish(secondPending.id, PinResult.Verified("1234"))
+            testScheduler.runCurrent()
+            assertNotNull(challenges.pending.value)
+
+            job.cancel()
+            testScheduler.runCurrent()
+            assertNull(challenges.pending.value)
+        }
+
+    @Test
+    fun CC7_holdUntilReleased_safetyTimeout_clearsPending() =
+        testScope.runTest {
+            val challenges = DefaultPinChallenges()
+            val deferredResult =
+                async {
+                    challenges.ask(PinRequest.Verify(1L, PinPurpose.EnterProfile), holdUntilReleased = true)
+                }
+            testScheduler.runCurrent()
+
+            val pending = challenges.pending.value
+            requireNotNull(pending)
+
+            challenges.finish(pending.id, PinResult.Verified("1234"))
+            testScheduler.runCurrent()
+
+            assertEquals(PinResult.Verified("1234"), deferredResult.await())
+            assertNotNull(challenges.pending.value)
+
+            testScheduler.advanceTimeBy(CHOOSE_TIMEOUT_MS + 1000L)
+            testScheduler.runCurrent()
             assertNull(challenges.pending.value)
         }
 }

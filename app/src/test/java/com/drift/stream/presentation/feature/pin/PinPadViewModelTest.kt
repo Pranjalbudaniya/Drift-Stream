@@ -330,6 +330,31 @@ class PinPadViewModelTest {
         }
 
     @Test
+    fun PP15_verified_withHold_showsOpeningState_andIgnoresInput() =
+        testScope.runTest {
+            coEvery { profilePinRepository.verify(1L, "1234") } returns VerifyResult.Correct
+
+            val viewModel = createViewModel()
+            viewModel.initialize(
+                PendingPin(1L, PinRequest.Verify(1L, PinPurpose.EnterProfile), holdUntilReleased = true),
+            )
+            testScheduler.advanceUntilIdle()
+
+            "1234".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
+            testScheduler.advanceUntilIdle()
+
+            assertTrue(viewModel.uiState.value.holding)
+            assertEquals(0, viewModel.uiState.value.dotCount)
+            assertNull(viewModel.uiState.value.message)
+
+            viewModel.onEvent(PinPadEvent.DigitPressed('9'))
+            assertEquals(0, viewModel.uiState.value.dotCount)
+
+            viewModel.onEvent(PinPadEvent.Confirm)
+            coVerify(exactly = 1) { profilePinRepository.verify(1L, "1234") }
+        }
+
+    @Test
     fun FP1_forgotPin_ownerPad_showsEraseConfirmation() =
         testScope.runTest {
             coEvery { profileRepository.get(1L) } returns sampleProfile(1L).copy(isOwner = true)

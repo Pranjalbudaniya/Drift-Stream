@@ -415,11 +415,16 @@ private fun defaultAddProfilePinOps(profileRepository: ProfileRepository): Profi
             object : PinChallenges {
                 override val pending: StateFlow<PendingPin?> = MutableStateFlow(null)
 
-                override suspend fun ask(request: PinRequest): PinResult = PinResult.Cancelled
+                override suspend fun ask(
+                    request: PinRequest,
+                    holdUntilReleased: Boolean,
+                ): PinResult = PinResult.Cancelled
 
                 override fun finish(
                     id: Long,
                     result: PinResult,
                 ) = Unit
+
+                override fun release(id: Long) = Unit
             },
     )

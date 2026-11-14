@@ -134,6 +134,7 @@ class PinPadViewModel
 
         private var currentRequestId: Long = 0L
         private var currentRequest: PinRequest? = null
+        private var currentPendingPin: PendingPin? = null
         private val typedDigits = StringBuilder()
         private var firstEntry: String? = null
         private var countdownJob: Job? = null
@@ -143,6 +144,7 @@ class PinPadViewModel
             if (currentRequestId == pendingPin.id) return
             currentRequestId = pendingPin.id
             currentRequest = pendingPin.request
+            currentPendingPin = pendingPin
             typedDigits.clear()
             firstEntry = null
             countdownJob?.cancel()
@@ -303,7 +305,17 @@ class PinPadViewModel
             when (result) {
                 is VerifyResult.Correct -> {
                     typedDigits.clear()
-                    _uiState.update { it.copy(dotCount = 0) }
+                    if (currentPendingPin?.holdUntilReleased == true) {
+                        _uiState.update {
+                            it.copy(
+                                dotCount = 0,
+                                holding = true,
+                                message = null,
+                            )
+                        }
+                    } else {
+                        _uiState.update { it.copy(dotCount = 0) }
+                    }
                     challenges.finish(currentRequestId, PinResult.Verified(pin))
                 }
 

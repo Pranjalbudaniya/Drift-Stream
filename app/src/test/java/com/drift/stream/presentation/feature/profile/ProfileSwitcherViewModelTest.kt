@@ -11,6 +11,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -238,8 +239,13 @@ class ProfileSwitcherViewModelTest {
             profilesFlow.value = listOf(p1, p2, p3)
             activeProfileIdFlow.value = 2L
 
-            coEvery { pinChallenges.ask(PinRequest.Verify(3L, PinPurpose.EnterProfile)) } returns
-                PinResult.Verified("1234")
+            every { pinChallenges.release(any()) } returns Unit
+            coEvery {
+                pinChallenges.ask(
+                    PinRequest.Verify(3L, PinPurpose.EnterProfile),
+                    holdUntilReleased = true,
+                )
+            } returns PinResult.Verified("1234")
             coEvery { activeProfileHolder.setActive(3L) } coAnswers {
                 activeProfileIdFlow.value = 3L
                 true
@@ -254,7 +260,12 @@ class ProfileSwitcherViewModelTest {
             viewModel.onEvent(ProfileSwitcherEvent.ProfileTapped(3L))
             testScheduler.advanceUntilIdle()
 
-            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Verify(3L, PinPurpose.EnterProfile)) }
+            coVerify(exactly = 1) {
+                pinChallenges.ask(
+                    PinRequest.Verify(3L, PinPurpose.EnterProfile),
+                    holdUntilReleased = true,
+                )
+            }
             coVerify(exactly = 1) { activeProfileHolder.setActive(3L) }
             assertEquals(listOf(ProfileSwitcherEffect.Switched), effects)
 
@@ -271,8 +282,13 @@ class ProfileSwitcherViewModelTest {
             profilesFlow.value = listOf(p1, p2, p3)
             activeProfileIdFlow.value = 2L
 
-            coEvery { pinChallenges.ask(PinRequest.Verify(3L, PinPurpose.EnterProfile)) } returns
-                PinResult.Cancelled
+            every { pinChallenges.release(any()) } returns Unit
+            coEvery {
+                pinChallenges.ask(
+                    PinRequest.Verify(3L, PinPurpose.EnterProfile),
+                    holdUntilReleased = true,
+                )
+            } returns PinResult.Cancelled
 
             val viewModel = createViewModel()
             testScheduler.advanceUntilIdle()
@@ -283,11 +299,58 @@ class ProfileSwitcherViewModelTest {
             viewModel.onEvent(ProfileSwitcherEvent.ProfileTapped(3L))
             testScheduler.advanceUntilIdle()
 
-            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Verify(3L, PinPurpose.EnterProfile)) }
+            coVerify(exactly = 1) {
+                pinChallenges.ask(
+                    PinRequest.Verify(3L, PinPurpose.EnterProfile),
+                    holdUntilReleased = true,
+                )
+            }
             coVerify(exactly = 0) { activeProfileHolder.setActive(any()) }
             assertTrue(effects.isEmpty())
             assertFalse(viewModel.uiState.value.switching)
             assertFalse(viewModel.uiState.value.error)
+
+            job.cancel()
+        }
+
+    @Test
+    fun SW9_switchToLockedProfile_releasesPadOnlyAfterSwitchHandled() =
+        testScope.runTest {
+            val p1 = sampleProfile(1L, "Me", isOwner = true)
+            val p2 = sampleProfile(2L, "Asha", isOwner = false)
+            val p3 = sampleProfile(3L, "Dev", isOwner = false, isLocked = true)
+
+            profilesFlow.value = listOf(p1, p2, p3)
+            activeProfileIdFlow.value = 2L
+
+            every { pinChallenges.release(any()) } returns Unit
+            coEvery {
+                pinChallenges.ask(
+                    PinRequest.Verify(3L, PinPurpose.EnterProfile),
+                    holdUntilReleased = true,
+                )
+            } returns PinResult.Verified("1234")
+            coEvery { activeProfileHolder.setActive(3L) } coAnswers {
+                activeProfileIdFlow.value = 3L
+                true
+            }
+
+            val viewModel = createViewModel()
+            testScheduler.advanceUntilIdle()
+
+            val effects = mutableListOf<ProfileSwitcherEffect>()
+            val job = launch { viewModel.effects.collect { effects.add(it) } }
+
+            viewModel.onEvent(ProfileSwitcherEvent.ProfileTapped(3L))
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(listOf(ProfileSwitcherEffect.Switched), effects)
+            verify(exactly = 0) { pinChallenges.release(any()) }
+
+            viewModel.onEvent(ProfileSwitcherEvent.SwitchHandled)
+            testScheduler.advanceUntilIdle()
+
+            verify(exactly = 1) { pinChallenges.release(3L) }
 
             job.cancel()
         }

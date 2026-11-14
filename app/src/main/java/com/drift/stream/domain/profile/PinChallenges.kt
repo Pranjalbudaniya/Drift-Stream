@@ -35,15 +35,21 @@ sealed interface PinResult {
 data class PendingPin(
     val id: Long,
     val request: PinRequest,
+    val holdUntilReleased: Boolean = false,
 )
 
 interface PinChallenges {
     val pending: StateFlow<PendingPin?>
 
-    suspend fun ask(request: PinRequest): PinResult
+    suspend fun ask(
+        request: PinRequest,
+        holdUntilReleased: Boolean = false,
+    ): PinResult
 
     fun finish(
         id: Long,
         result: PinResult,
     )
+
+    fun release(id: Long)
 }

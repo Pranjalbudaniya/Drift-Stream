@@ -13,6 +13,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,6 +49,7 @@ class AppGateViewModelTest {
         every { profileRepository.profiles } returns profilesFlow
         every { activeProfileHolder.activeProfileId } returns activeProfileIdFlow
         every { appStateRepository.alwaysShowPicker } returns alwaysShowPickerFlow
+        every { pinChallenges.release(any()) } returns Unit
     }
 
     @After
@@ -214,8 +216,12 @@ class AppGateViewModelTest {
             activeProfileIdFlow.value = 1L
             profilesFlow.value = listOf(owner, locked)
 
-            coEvery { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.EnterProfile)) } returns
-                PinResult.Verified("1234")
+            coEvery {
+                pinChallenges.ask(
+                    PinRequest.Verify(2L, PinPurpose.EnterProfile),
+                    holdUntilReleased = true,
+                )
+            } returns PinResult.Verified("1234")
             coEvery { activeProfileHolder.setActive(2L) } coAnswers {
                 activeProfileIdFlow.value = 2L
                 true
@@ -228,7 +234,12 @@ class AppGateViewModelTest {
             vm.onProfileChosen(2L)
             testScheduler.advanceUntilIdle()
 
-            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.EnterProfile)) }
+            coVerify(exactly = 1) {
+                pinChallenges.ask(
+                    PinRequest.Verify(2L, PinPurpose.EnterProfile),
+                    holdUntilReleased = true,
+                )
+            }
             coVerify(exactly = 1) { activeProfileHolder.setActive(2L) }
             assertEquals(StartGate.Enter, vm.uiState.value.gate)
             assertFalse(vm.uiState.value.isChoosing)
@@ -243,8 +254,12 @@ class AppGateViewModelTest {
             activeProfileIdFlow.value = 1L
             profilesFlow.value = listOf(owner, locked)
 
-            coEvery { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.EnterProfile)) } returns
-                PinResult.Cancelled
+            coEvery {
+                pinChallenges.ask(
+                    PinRequest.Verify(2L, PinPurpose.EnterProfile),
+                    holdUntilReleased = true,
+                )
+            } returns PinResult.Cancelled
 
             val vm = createViewModel()
             testScheduler.advanceUntilIdle()
@@ -253,7 +268,12 @@ class AppGateViewModelTest {
             vm.onProfileChosen(2L)
             testScheduler.advanceUntilIdle()
 
-            coVerify(exactly = 1) { pinChallenges.ask(PinRequest.Verify(2L, PinPurpose.EnterProfile)) }
+            coVerify(exactly = 1) {
+                pinChallenges.ask(
+                    PinRequest.Verify(2L, PinPurpose.EnterProfile),
+                    holdUntilReleased = true,
+                )
+            }
             coVerify(exactly = 0) { activeProfileHolder.setActive(any()) }
             assertEquals(StartGate.Picker, vm.uiState.value.gate)
             assertFalse(vm.uiState.value.isChoosing)
@@ -360,5 +380,37 @@ class AppGateViewModelTest {
 
             coVerify(exactly = 0) { pinChallenges.ask(any()) }
             assertFalse(vm.uiState.value.managing)
+        }
+
+    @Test
+    fun GV14_chooseLockedProfile_releasesPadOnlyAfterGateLatches() =
+        testScope.runTest {
+            val owner = sampleProfile(1L, "Me", isOwner = true)
+            val p2 = sampleProfile(2L, "Asha", isOwner = false, isLocked = true)
+            activeProfileIdFlow.value = 1L
+            profilesFlow.value = listOf(owner, p2)
+
+            coEvery {
+                pinChallenges.ask(
+                    PinRequest.Verify(2L, PinPurpose.EnterProfile),
+                    holdUntilReleased = true,
+                )
+            } returns PinResult.Verified("1234")
+
+            coEvery { activeProfileHolder.setActive(2L) } coAnswers {
+                verify(exactly = 0) { pinChallenges.release(any()) }
+                activeProfileIdFlow.value = 2L
+                true
+            }
+
+            val vm = createViewModel()
+            testScheduler.advanceUntilIdle()
+            assertEquals(StartGate.Picker, vm.uiState.value.gate)
+
+            vm.onProfileChosen(2L)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(StartGate.Enter, vm.uiState.value.gate)
+            verify(exactly = 1) { pinChallenges.release(2L) }
         }
 }

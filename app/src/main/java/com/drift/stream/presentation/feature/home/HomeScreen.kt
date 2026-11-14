@@ -46,6 +46,7 @@ import com.drift.stream.presentation.common.NexusOutlinedButton
 import com.drift.stream.presentation.common.NexusRefreshBox
 import com.drift.stream.presentation.common.labelResId
 import com.drift.stream.presentation.feature.profile.ProfileSwitcherEffect
+import com.drift.stream.presentation.feature.profile.ProfileSwitcherEvent
 import com.drift.stream.presentation.feature.profile.ProfileSwitcherSheet
 import com.drift.stream.presentation.feature.profile.ProfileSwitcherViewModel
 import com.drift.stream.presentation.theme.NexusTheme
@@ -71,6 +72,7 @@ fun HomeScreen(
                 ProfileSwitcherEffect.Switched -> {
                     isSwitcherOpen = false
                     onProfileSwitched()
+                    switcherViewModel.onEvent(ProfileSwitcherEvent.SwitchHandled)
                 }
 
                 ProfileSwitcherEffect.OpenAddProfile -> {

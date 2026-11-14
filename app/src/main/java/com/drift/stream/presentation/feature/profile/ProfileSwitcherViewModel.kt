@@ -41,6 +41,8 @@ sealed interface ProfileSwitcherEvent {
     data object AddProfileTapped : ProfileSwitcherEvent
 
     data object ErrorShown : ProfileSwitcherEvent
+
+    data object SwitchHandled : ProfileSwitcherEvent
 }
 
 sealed interface ProfileSwitcherEffect {
@@ -85,6 +87,8 @@ class ProfileSwitcherViewModel
             }
         }
 
+        private var heldLockedProfileId: Long? = null
+
         fun onEvent(event: ProfileSwitcherEvent) {
             when (event) {
                 is ProfileSwitcherEvent.ProfileTapped -> {
@@ -100,7 +104,17 @@ class ProfileSwitcherViewModel
                 ProfileSwitcherEvent.ErrorShown -> {
                     _uiState.update { it.copy(error = false) }
                 }
+
+                ProfileSwitcherEvent.SwitchHandled -> {
+                    releaseHeldPin()
+                }
             }
+        }
+
+        private fun releaseHeldPin() {
+            val id = heldLockedProfileId ?: return
+            heldLockedProfileId = null
+            pinChallenges.release(id)
         }
 
         private fun handleProfileTapped(id: Long) {
@@ -117,10 +131,15 @@ class ProfileSwitcherViewModel
 
             viewModelScope.launch {
                 if (target?.isLocked == true) {
-                    val result = pinChallenges.ask(PinRequest.Verify(id, PinPurpose.EnterProfile))
+                    val result =
+                        pinChallenges.ask(
+                            PinRequest.Verify(id, PinPurpose.EnterProfile),
+                            holdUntilReleased = true,
+                        )
                     if (result !is PinResult.Verified) {
                         return@launch
                     }
+                    heldLockedProfileId = id
                 }
 
                 _uiState.update { it.copy(switching = true, error = false) }
@@ -128,6 +147,7 @@ class ProfileSwitcherViewModel
                 try {
                     val success = activeProfileHolder.setActive(id)
                     if (!success) {
+                        releaseHeldPin()
                         _uiState.update { it.copy(switching = false, error = true) }
                         return@launch
                     }
@@ -136,12 +156,14 @@ class ProfileSwitcherViewModel
                             activeProfileHolder.activeProfileId.first { it == id }
                         }
                     if (matched == null) {
+                        releaseHeldPin()
                         _uiState.update { it.copy(switching = false, error = true) }
                         return@launch
                     }
                     _uiState.update { it.copy(switching = false, error = false) }
                     _effects.emit(ProfileSwitcherEffect.Switched)
                 } catch (_: Exception) {
+                    releaseHeldPin()
                     _uiState.update { it.copy(switching = false, error = true) }
                 }
             }

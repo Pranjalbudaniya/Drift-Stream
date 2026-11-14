@@ -84,6 +84,7 @@ fun ProfileForm(
     navigationIcon: (@Composable () -> Unit)? = null,
     onPickPhoto: (() -> Unit)? = null,
     onPickEmoji: (() -> Unit)? = null,
+    pinLockContent: (@Composable () -> Unit)? = null,
 ) {
     var isAvatarSheetOpen by rememberSaveable { mutableStateOf(false) }
     var isColorSheetOpen by rememberSaveable { mutableStateOf(false) }
@@ -163,6 +164,11 @@ fun ProfileForm(
                 onColorPicked = { onEvent(ProfileFormEvent.ColorPicked(it)) },
                 onCustomColorClick = { isColorSheetOpen = true },
             )
+        }
+
+        if (pinLockContent != null) {
+            Spacer(modifier = Modifier.height(NexusTheme.spacing.lg))
+            pinLockContent()
         }
 
         Spacer(modifier = Modifier.height(NexusTheme.spacing.xl))

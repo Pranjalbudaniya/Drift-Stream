@@ -23,8 +23,6 @@ import com.drift.stream.domain.repository.ProfilePinRepository
 import com.drift.stream.domain.repository.ProfileRepository
 import com.drift.stream.domain.repository.SetPinResult
 import com.drift.stream.domain.repository.VerifyResult
-import com.drift.stream.presentation.feature.pin.PinOfferEvent
-import com.drift.stream.presentation.feature.pin.PinOfferState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +30,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.IOException
@@ -88,6 +87,19 @@ class AddProfileViewModel
         constructor(
             profileRepository: ProfileRepository,
             savedStateHandle: SavedStateHandle,
+            pinOps: ProfilePinOps,
+        ) : this(
+            profileRepository = profileRepository,
+            savedStateHandle = savedStateHandle,
+            avatarPhotoStore = defaultAddAvatarPhotoStore(),
+            avatarPhotoPipeline = defaultAddAvatarPhotoPipeline(),
+            pinOps = pinOps,
+            clock = Clock.systemUTC(),
+        )
+
+        constructor(
+            profileRepository: ProfileRepository,
+            savedStateHandle: SavedStateHandle,
         ) : this(
             profileRepository = profileRepository,
             savedStateHandle = savedStateHandle,
@@ -101,11 +113,9 @@ class AddProfileViewModel
         private var isInitialized: Boolean = false
 
         private var pendingPin: String? = null
-        private var pendingSubmitRequest: SubmitRequest? = null
-        private var pendingOtherNames: Collection<String> = emptyList()
 
-        private val _pinOffer = MutableStateFlow(PinOfferState.None)
-        val pinOffer: StateFlow<PinOfferState> = _pinOffer.asStateFlow()
+        private val _pinPending = MutableStateFlow(false)
+        val pinPending: StateFlow<Boolean> = _pinPending.asStateFlow()
 
         var pinSaveFailed: Boolean = false
             private set
@@ -190,60 +200,34 @@ class AddProfileViewModel
         }
 
         fun onEvent(event: ProfileFormEvent) {
-            val otherNames = existingProfiles.map { it.name }
-            val (nextState, request) = reduceProfileForm(_uiState.value, event, otherNames)
-            if (request != null) {
-                if (_pinOffer.value == PinOfferState.Asking) return
-                pendingSubmitRequest = request
-                pendingOtherNames = otherNames
-                _pinOffer.value = PinOfferState.Asking
-                _uiState.value = nextState.copy(saving = false)
-                persistState(_uiState.value)
-                return
-            }
-            _uiState.value = nextState
-            persistState(nextState)
-        }
-
-        fun onEvent(event: PinOfferEvent) {
             when (event) {
-                PinOfferEvent.SetPin -> {
+                is ProfileFormEvent.PinSetClicked,
+                is ProfileFormEvent.PinChangeClicked,
+                -> {
                     viewModelScope.launch {
-                        val challengeResult = pinOps.challenges.ask(PinRequest.Create)
-                        when (challengeResult) {
-                            is PinResult.Created -> {
-                                pendingPin = challengeResult.pin
-                                val request = pendingSubmitRequest ?: return@launch
-                                pendingSubmitRequest = null
-                                _pinOffer.value = PinOfferState.None
-                                _uiState.value = _uiState.value.copy(saving = true)
-                                handleSubmit(request, pendingOtherNames)
-                            }
-
-                            is PinResult.Cancelled -> {
-                                pendingPin = null
-                                _pinOffer.value = PinOfferState.Asking
-                            }
-
-                            else -> {}
+                        val result = pinOps.challenges.ask(PinRequest.Create)
+                        if (result is PinResult.Created) {
+                            pendingPin = result.pin
+                            _pinPending.value = true
+                            _uiState.update { it.copy(pinPending = true) }
                         }
                     }
                 }
 
-                PinOfferEvent.Skip -> {
-                    val request = pendingSubmitRequest ?: return
-                    pendingSubmitRequest = null
+                is ProfileFormEvent.PinRemoveClicked -> {
                     pendingPin = null
-                    _pinOffer.value = PinOfferState.None
-                    _uiState.value = _uiState.value.copy(saving = true)
-                    handleSubmit(request, pendingOtherNames)
+                    _pinPending.value = false
+                    _uiState.update { it.copy(pinPending = false) }
                 }
 
-                PinOfferEvent.Dismissed -> {
-                    pendingPin = null
-                    pendingSubmitRequest = null
-                    _pinOffer.value = PinOfferState.None
-                    _uiState.value = _uiState.value.copy(saving = false)
+                else -> {
+                    val otherNames = existingProfiles.map { it.name }
+                    val (nextState, request) = reduceProfileForm(_uiState.value, event, otherNames)
+                    _uiState.value = nextState
+                    persistState(nextState)
+                    if (request != null) {
+                        handleSubmit(request, otherNames)
+                    }
                 }
             }
         }

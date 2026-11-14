@@ -1046,9 +1046,7 @@
         <item quantity="other">%d of 4 digits entered</item>
     </plurals>
     <string name="pin_opening">Opening…</string>
-    <string name="pin_offer_title">Protect this profile with a PIN?</string>
-    <string name="pin_offer_message">A PIN keeps other people on this phone out of this profile.</string>
-    <string name="pin_offer_skip">Skip</string>
+    <string name="pin_lock_applied_when_saved">Applied when you save.</string>
     <string name="profile_save_pin_failed">Profile saved, but the PIN couldn\'t be set. You can set it in Edit profile.</string>
     <string name="pin_reset_button">Reset PIN</string>
     <string name="pin_reset_dialog_title">Remove the PIN of %1$s?</string>

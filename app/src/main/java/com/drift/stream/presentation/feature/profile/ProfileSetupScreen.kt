@@ -25,9 +25,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.drift.stream.R
-import com.drift.stream.presentation.feature.pin.PinOfferDialog
-import com.drift.stream.presentation.feature.pin.PinOfferEvent
-import com.drift.stream.presentation.feature.pin.PinOfferState
 import com.drift.stream.presentation.theme.NexusTheme
 
 @Composable
@@ -38,7 +35,7 @@ fun ProfileSetupScreen(
 ) {
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val pinOffer by viewModel.pinOffer.collectAsStateWithLifecycle()
+    val pinPending by viewModel.pinPending.collectAsStateWithLifecycle()
     val croppingBitmap by viewModel.croppingBitmap.collectAsStateWithLifecycle()
     var isEmojiPickerOpen by rememberSaveable { mutableStateOf(false) }
 
@@ -73,6 +70,7 @@ fun ProfileSetupScreen(
     Box(modifier = modifier.fillMaxSize()) {
         ProfileSetupContent(
             state = state,
+            pinPending = pinPending,
             onEvent = viewModel::onEvent,
             onPickPhoto = {
                 photoPickerLauncher.launch(
@@ -102,14 +100,6 @@ fun ProfileSetupScreen(
                 modifier = Modifier.fillMaxSize(),
             )
         }
-
-        if (pinOffer == PinOfferState.Asking) {
-            PinOfferDialog(
-                onSetPin = { viewModel.onEvent(PinOfferEvent.SetPin) },
-                onSkip = { viewModel.onEvent(PinOfferEvent.Skip) },
-                onDismiss = { viewModel.onEvent(PinOfferEvent.Dismissed) },
-            )
-        }
     }
 }
 
@@ -118,6 +108,7 @@ fun ProfileSetupContent(
     state: ProfileFormState,
     onEvent: (ProfileFormEvent) -> Unit,
     modifier: Modifier = Modifier,
+    pinPending: Boolean = state.pinPending,
     onPickPhoto: (() -> Unit)? = null,
     onPickEmoji: (() -> Unit)? = null,
 ) {
@@ -138,6 +129,15 @@ fun ProfileSetupContent(
                 actionButtonText = stringResource(R.string.profile_form_continue),
                 onPickPhoto = onPickPhoto,
                 onPickEmoji = onPickEmoji,
+                pinLockContent = {
+                    PinLockSection(
+                        isLocked = pinPending,
+                        onSetPin = { onEvent(ProfileFormEvent.PinSetClicked) },
+                        onChangePin = { onEvent(ProfileFormEvent.PinChangeClicked) },
+                        onRemovePin = { onEvent(ProfileFormEvent.PinRemoveClicked) },
+                        note = if (pinPending) stringResource(R.string.pin_lock_applied_when_saved) else null,
+                    )
+                },
                 modifier =
                     Modifier
                         .fillMaxSize()
@@ -148,23 +148,27 @@ fun ProfileSetupContent(
     }
 }
 
-@Preview(name = "Profile Setup - Light", showBackground = true)
+@Preview(name = "Profile Setup - PIN Off Light", showBackground = true)
+@Preview(name = "Profile Setup - PIN Off Dark", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
-internal fun ProfileSetupScreenLightPreview() {
+internal fun ProfileSetupScreenPinOffPreview() {
     NexusTheme {
         ProfileSetupContent(
-            state = ProfileFormState(name = "Me", colorIndex = 0, emoji = null),
+            state = ProfileFormState(name = "Me", colorIndex = 0, emoji = null, pinPending = false),
+            pinPending = false,
             onEvent = {},
         )
     }
 }
 
-@Preview(name = "Profile Setup - Dark", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Preview(name = "Profile Setup - PIN On Light", showBackground = true)
+@Preview(name = "Profile Setup - PIN On Dark", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
-internal fun ProfileSetupScreenDarkPreview() {
+internal fun ProfileSetupScreenPinOnPreview() {
     NexusTheme {
         ProfileSetupContent(
-            state = ProfileFormState(name = "Me", colorIndex = 0, emoji = null),
+            state = ProfileFormState(name = "Me", colorIndex = 0, emoji = null, pinPending = true),
+            pinPending = true,
             onEvent = {},
         )
     }

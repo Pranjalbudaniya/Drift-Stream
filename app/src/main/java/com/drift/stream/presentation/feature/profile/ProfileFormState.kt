@@ -21,6 +21,7 @@ data class ProfileFormState(
     val saving: Boolean = false,
     val saveFailed: Boolean = false,
     val photoError: Boolean = false,
+    val pinPending: Boolean = false,
 ) {
     val avatarKind: AvatarKind
         get() =
@@ -78,7 +79,17 @@ sealed interface ProfileFormEvent {
     data object PhotoError : ProfileFormEvent
 
     data object ClearPhotoError : ProfileFormEvent
+
+    data object PinSetClicked : ProfileFormEvent
+
+    data object PinChangeClicked : ProfileFormEvent
+
+    data object PinRemoveClicked : ProfileFormEvent
 }
+
+val PinSetClicked: ProfileFormEvent = ProfileFormEvent.PinSetClicked
+val PinChangeClicked: ProfileFormEvent = ProfileFormEvent.PinChangeClicked
+val PinRemoveClicked: ProfileFormEvent = ProfileFormEvent.PinRemoveClicked
 
 data class SubmitRequest(
     val name: String,
@@ -149,65 +160,12 @@ fun reduceProfileForm(
     state: ProfileFormState,
     event: ProfileFormEvent,
     otherNames: Collection<String>,
-): Pair<ProfileFormState, SubmitRequest?> =
-    when (event) {
+): Pair<ProfileFormState, SubmitRequest?> {
+    reduceAvatarEvent(state, event)?.let { return Pair(it, null) }
+    return when (event) {
         is ProfileFormEvent.NameChanged -> {
             val truncated = truncateToCodePoints(event.text, PROFILE_NAME_MAX_LENGTH)
             Pair(state.copy(name = truncated, nameError = null, saveFailed = false), null)
-        }
-
-        is ProfileFormEvent.ColorPicked -> {
-            Pair(
-                state.copy(
-                    colorIndex = normalizeAvatarColor(event.colorIndex),
-                    customColor = null,
-                ),
-                null,
-            )
-        }
-
-        is ProfileFormEvent.CustomColorPicked -> {
-            Pair(
-                state.copy(
-                    customColor = forceOpaque(event.argb),
-                ),
-                null,
-            )
-        }
-
-        is ProfileFormEvent.EmojiPicked -> {
-            Pair(reduceAvatarEmoji(state, event.emoji), null)
-        }
-
-        is ProfileFormEvent.PhotoCropped -> {
-            Pair(
-                state.copy(
-                    pendingPhotoPath = event.path,
-                    emoji = null,
-                    existingPhotoStamp = null,
-                    photoError = false,
-                ),
-                null,
-            )
-        }
-
-        is ProfileFormEvent.AvatarCleared -> {
-            Pair(
-                state.copy(
-                    emoji = null,
-                    pendingPhotoPath = null,
-                    existingPhotoStamp = null,
-                ),
-                null,
-            )
-        }
-
-        is ProfileFormEvent.PhotoError -> {
-            Pair(state.copy(photoError = true), null)
-        }
-
-        is ProfileFormEvent.ClearPhotoError -> {
-            Pair(state.copy(photoError = false), null)
         }
 
         is ProfileFormEvent.SaveFailed -> {
@@ -216,6 +174,61 @@ fun reduceProfileForm(
 
         is ProfileFormEvent.Submit -> {
             reduceSubmit(state, otherNames)
+        }
+
+        else -> {
+            Pair(state, null)
+        }
+    }
+}
+
+private fun reduceAvatarEvent(
+    state: ProfileFormState,
+    event: ProfileFormEvent,
+): ProfileFormState? =
+    when (event) {
+        is ProfileFormEvent.ColorPicked -> {
+            state.copy(
+                colorIndex = normalizeAvatarColor(event.colorIndex),
+                customColor = null,
+            )
+        }
+
+        is ProfileFormEvent.CustomColorPicked -> {
+            state.copy(customColor = forceOpaque(event.argb))
+        }
+
+        is ProfileFormEvent.EmojiPicked -> {
+            reduceAvatarEmoji(state, event.emoji)
+        }
+
+        is ProfileFormEvent.PhotoCropped -> {
+            state.copy(
+                pendingPhotoPath = event.path,
+                emoji = null,
+                existingPhotoStamp = null,
+                photoError = false,
+            )
+        }
+
+        is ProfileFormEvent.AvatarCleared -> {
+            state.copy(
+                emoji = null,
+                pendingPhotoPath = null,
+                existingPhotoStamp = null,
+            )
+        }
+
+        is ProfileFormEvent.PhotoError -> {
+            state.copy(photoError = true)
+        }
+
+        is ProfileFormEvent.ClearPhotoError -> {
+            state.copy(photoError = false)
+        }
+
+        else -> {
+            null
         }
     }
 

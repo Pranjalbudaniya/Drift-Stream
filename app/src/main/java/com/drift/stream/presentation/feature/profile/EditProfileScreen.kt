@@ -494,11 +494,12 @@ internal fun EditProfileResetPinPreview() {
 @Composable
 fun PinLockSection(
     isLocked: Boolean,
-    actionError: Boolean,
     onSetPin: () -> Unit,
     onChangePin: () -> Unit,
     onRemovePin: () -> Unit,
     modifier: Modifier = Modifier,
+    actionError: Boolean = false,
+    note: String? = null,
 ) {
     val spacing = NexusTheme.spacing
     Column(modifier = modifier.fillMaxWidth()) {
@@ -539,6 +540,16 @@ fun PinLockSection(
                     Text(text = stringResource(R.string.pin_set_button))
                 }
             }
+        }
+
+        if (note != null) {
+            Spacer(modifier = Modifier.height(spacing.xs))
+            Text(
+                text = note,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
 
         if (actionError) {

@@ -4,8 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.drift.stream.domain.model.Profile
 import com.drift.stream.domain.profile.AppDataEraser
-import com.drift.stream.domain.profile.PIN_MAX_LENGTH
-import com.drift.stream.domain.profile.PIN_MIN_LENGTH
+import com.drift.stream.domain.profile.PIN_LENGTH
 import com.drift.stream.domain.profile.PendingPin
 import com.drift.stream.domain.profile.PinChallenges
 import com.drift.stream.domain.profile.PinPurpose
@@ -68,6 +67,7 @@ data class PinPadUiState(
     val busy: Boolean = false,
     val forgot: ForgotState? = null,
     val isVerify: Boolean = false,
+    val holding: Boolean = false,
 )
 
 sealed interface PinPadEvent {
@@ -159,6 +159,7 @@ class PinPadViewModel
                             busy = false,
                             forgot = null,
                             isVerify = true,
+                            holding = false,
                         )
                     }
                     viewModelScope.launch {
@@ -193,6 +194,7 @@ class PinPadViewModel
                             busy = false,
                             forgot = null,
                             isVerify = false,
+                            holding = false,
                         )
                     }
                 }
@@ -252,19 +254,20 @@ class PinPadViewModel
             }
         }
 
+        private fun isActionBlocked(): Boolean = _uiState.value.busy || _uiState.value.locked || _uiState.value.holding
+
         private fun handleDigit(digit: Char) {
-            if (_uiState.value.busy || _uiState.value.locked) return
-            if (typedDigits.length >= PIN_MAX_LENGTH) return
+            if (isActionBlocked() || typedDigits.length >= PIN_LENGTH) return
             typedDigits.append(digit)
             val count = typedDigits.length
             _uiState.update { it.copy(dotCount = count, message = null) }
-            if (count == PIN_MAX_LENGTH) {
-                handleConfirm()
+            if (count == PIN_LENGTH && currentRequest is PinRequest.Verify) {
+                handleVerifySubmit()
             }
         }
 
         private fun handleBackspace() {
-            if (_uiState.value.busy || _uiState.value.locked) return
+            if (isActionBlocked()) return
             if (typedDigits.isNotEmpty()) {
                 typedDigits.deleteCharAt(typedDigits.length - 1)
                 _uiState.update { it.copy(dotCount = typedDigits.length, message = null) }
@@ -272,17 +275,9 @@ class PinPadViewModel
         }
 
         private fun handleConfirm() {
-            if (_uiState.value.busy || _uiState.value.locked || typedDigits.length < PIN_MIN_LENGTH) return
-            when (currentRequest) {
-                is PinRequest.Verify -> {
-                    handleVerifySubmit()
-                }
-
-                is PinRequest.Create -> {
-                    handleCreateSubmit()
-                }
-
-                null -> {}
+            if (isActionBlocked() || typedDigits.length < PIN_LENGTH) return
+            if (currentRequest is PinRequest.Create) {
+                handleCreateSubmit()
             }
         }
 

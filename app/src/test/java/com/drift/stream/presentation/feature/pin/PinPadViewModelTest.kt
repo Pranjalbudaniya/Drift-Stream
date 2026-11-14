@@ -81,17 +81,17 @@ class PinPadViewModelTest {
         )
 
     @Test
-    fun PP1_digits_acceptedUpToSix_ignoredBeyond() =
+    fun PP1_digits_acceptedUpToFour_ignoredBeyond() =
         testScope.runTest {
             val viewModel = createViewModel()
-            viewModel.initialize(PendingPin(1L, PinRequest.Verify(1L, PinPurpose.EnterProfile)))
+            viewModel.initialize(PendingPin(1L, PinRequest.Create))
             testScheduler.advanceUntilIdle()
 
             repeat(7) {
                 viewModel.onEvent(PinPadEvent.DigitPressed('1'))
             }
 
-            assertEquals(6, viewModel.uiState.value.dotCount)
+            assertEquals(4, viewModel.uiState.value.dotCount)
         }
 
     @Test
@@ -136,7 +136,6 @@ class PinPadViewModelTest {
             testScheduler.advanceUntilIdle()
 
             "1234".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
-            viewModel.onEvent(PinPadEvent.Confirm)
             testScheduler.advanceUntilIdle()
 
             coVerify(exactly = 1) { profilePinRepository.verify(1L, "1234") }
@@ -154,7 +153,6 @@ class PinPadViewModelTest {
             testScheduler.advanceUntilIdle()
 
             "0000".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
-            viewModel.onEvent(PinPadEvent.Confirm)
             testScheduler.advanceUntilIdle()
 
             assertEquals(0, viewModel.uiState.value.dotCount)
@@ -171,7 +169,6 @@ class PinPadViewModelTest {
             testScheduler.advanceUntilIdle()
 
             "0000".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
-            viewModel.onEvent(PinPadEvent.Confirm)
             testScheduler.runCurrent()
 
             assertTrue(viewModel.uiState.value.locked)
@@ -192,7 +189,6 @@ class PinPadViewModelTest {
             testScheduler.advanceUntilIdle()
 
             "0000".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
-            viewModel.onEvent(PinPadEvent.Confirm)
             testScheduler.runCurrent()
 
             assertTrue(viewModel.uiState.value.locked)
@@ -267,8 +263,6 @@ class PinPadViewModelTest {
             testScheduler.advanceUntilIdle()
 
             "1234".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
-
-            viewModel.onEvent(PinPadEvent.Confirm)
             testScheduler.advanceTimeBy(100)
             assertTrue(viewModel.uiState.value.busy)
 
@@ -276,6 +270,63 @@ class PinPadViewModelTest {
             testScheduler.advanceUntilIdle()
 
             coVerify(exactly = 1) { profilePinRepository.verify(1L, "1234") }
+        }
+
+    @Test
+    fun PP12_verify_autoSubmitsAtFourthDigit() =
+        testScope.runTest {
+            coEvery { profilePinRepository.verify(1L, "1234") } returns VerifyResult.Correct
+
+            val viewModel = createViewModel()
+            viewModel.initialize(PendingPin(1L, PinRequest.Verify(1L, PinPurpose.EnterProfile)))
+            testScheduler.advanceUntilIdle()
+
+            "1234".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
+            testScheduler.advanceUntilIdle()
+
+            coVerify(exactly = 1) { profilePinRepository.verify(1L, "1234") }
+            verify(exactly = 1) { challenges.finish(1L, PinResult.Verified("1234")) }
+        }
+
+    @Test
+    fun PP13_create_firstEntry_waitsForConfirmKey_thenAdvances() =
+        testScope.runTest {
+            val viewModel = createViewModel()
+            viewModel.initialize(PendingPin(1L, PinRequest.Create))
+            testScheduler.advanceUntilIdle()
+
+            "1234".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(PinTitleKind.CreatePin, viewModel.uiState.value.titleKind)
+            assertEquals(4, viewModel.uiState.value.dotCount)
+
+            viewModel.onEvent(PinPadEvent.Confirm)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(PinTitleKind.ConfirmPin, viewModel.uiState.value.titleKind)
+            assertEquals(0, viewModel.uiState.value.dotCount)
+        }
+
+    @Test
+    fun PP14_create_secondEntry_waitsForConfirmKey_thenFinishes() =
+        testScope.runTest {
+            val viewModel = createViewModel()
+            viewModel.initialize(PendingPin(1L, PinRequest.Create))
+            testScheduler.advanceUntilIdle()
+
+            "1234".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
+            viewModel.onEvent(PinPadEvent.Confirm)
+
+            "1234".forEach { viewModel.onEvent(PinPadEvent.DigitPressed(it)) }
+            testScheduler.advanceUntilIdle()
+
+            verify(exactly = 0) { challenges.finish(any(), any()) }
+
+            viewModel.onEvent(PinPadEvent.Confirm)
+            testScheduler.advanceUntilIdle()
+
+            verify(exactly = 1) { challenges.finish(1L, PinResult.Created("1234")) }
         }
 
     @Test

@@ -20,12 +20,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -45,10 +48,8 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.drift.stream.R
 import com.drift.stream.domain.model.Profile
-import com.drift.stream.domain.profile.PIN_MAX_LENGTH
-import com.drift.stream.domain.profile.PIN_MIN_LENGTH
+import com.drift.stream.domain.profile.PIN_LENGTH
 import com.drift.stream.domain.profile.PendingPin
-import com.drift.stream.domain.profile.pinDotSlots
 import com.drift.stream.presentation.common.NexusTextButton
 import com.drift.stream.presentation.common.ProfileAvatarFor
 import com.drift.stream.presentation.theme.NexusTheme
@@ -60,11 +61,13 @@ val PIN_DOT_SIZE = 14.dp
 val PIN_DOT_SPACING = 12.dp
 val PIN_MESSAGE_HEIGHT = 24.dp
 val PIN_ROW_SPACING = 12.dp
+val PIN_PROGRESS_SIZE = 16.dp
+val PIN_PROGRESS_STROKE = 2.dp
 private const val SECONDS_PER_MINUTE = 60
 private const val DISABLED_ALPHA = 0.38f
 private const val DIGIT_BG_ALPHA_ENABLED = 0.6f
 private const val DIGIT_BG_ALPHA_DISABLED = 0.2f
-private const val PREVIEW_CREATE_DOT_COUNT = 2
+private const val PREVIEW_CONFIRM_DOT_COUNT = 4
 
 @Composable
 fun PinPadScreen(
@@ -130,7 +133,6 @@ internal fun PinPadContent(
 
             Spacer(modifier = Modifier.height(spacing.lg))
 
-            val slots = pinDotSlots(uiState.dotCount)
             val dotsDesc =
                 pluralStringResource(
                     R.plurals.pin_digits_entered,
@@ -145,7 +147,7 @@ internal fun PinPadContent(
                 horizontalArrangement = Arrangement.spacedBy(PIN_DOT_SPACING),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                for (i in 0 until slots) {
+                for (i in 0 until PIN_LENGTH) {
                     val filled = i < uiState.dotCount
                     Box(
                         modifier =
@@ -169,9 +171,28 @@ internal fun PinPadContent(
 
             Spacer(modifier = Modifier.height(spacing.sm))
 
-            PinMessageView(message = uiState.message)
+            if (uiState.holding) {
+                Row(
+                    modifier = Modifier.height(PIN_MESSAGE_HEIGHT),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(PIN_PROGRESS_SIZE),
+                        strokeWidth = PIN_PROGRESS_STROKE,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = stringResource(R.string.pin_opening),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                PinMessageView(message = uiState.message)
+            }
 
-            if (uiState.isVerify) {
+            if (uiState.isVerify && !uiState.holding) {
                 NexusTextButton(
                     onClick = { onEvent(PinPadEvent.ForgotPinPressed) },
                 ) {
@@ -309,10 +330,10 @@ private fun PinKeypad(
     onEvent: (PinPadEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val keysDisabled = uiState.busy || uiState.locked
-    val digitEnabled = !keysDisabled && uiState.dotCount < PIN_MAX_LENGTH
+    val keysDisabled = uiState.busy || uiState.locked || uiState.holding
+    val digitEnabled = !keysDisabled && uiState.dotCount < PIN_LENGTH
     val backspaceEnabled = !keysDisabled && uiState.dotCount > 0
-    val confirmEnabled = !keysDisabled && uiState.dotCount >= PIN_MIN_LENGTH
+    val confirmEnabled = !keysDisabled && uiState.dotCount == PIN_LENGTH
 
     val rows =
         listOf(
@@ -332,21 +353,12 @@ private fun PinKeypad(
                     PinKeyButton(
                         enabled = digitEnabled,
                         contentDescription = digit.toString(),
-                        backgroundColor =
-                            MaterialTheme.colorScheme.surfaceVariant.copy(
-                                alpha = if (digitEnabled) DIGIT_BG_ALPHA_ENABLED else DIGIT_BG_ALPHA_DISABLED,
-                            ),
+                        hasBackground = true,
                         onClick = { onEvent(PinPadEvent.DigitPressed(digit)) },
                     ) {
                         Text(
                             text = digit.toString(),
                             style = MaterialTheme.typography.titleLarge,
-                            color =
-                                if (digitEnabled) {
-                                    MaterialTheme.colorScheme.onSurface
-                                } else {
-                                    MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
-                                },
                         )
                     }
                 }
@@ -362,49 +374,38 @@ private fun PinKeypad(
                 Text(
                     text = "⌫",
                     style = MaterialTheme.typography.titleLarge,
-                    color =
-                        if (backspaceEnabled) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
-                        },
                 )
             }
             PinKeyButton(
                 enabled = digitEnabled,
                 contentDescription = '0'.toString(),
-                backgroundColor =
-                    MaterialTheme.colorScheme.surfaceVariant.copy(
-                        alpha = if (digitEnabled) DIGIT_BG_ALPHA_ENABLED else DIGIT_BG_ALPHA_DISABLED,
-                    ),
+                hasBackground = true,
                 onClick = { onEvent(PinPadEvent.DigitPressed('0')) },
             ) {
                 Text(
                     text = "0",
                     style = MaterialTheme.typography.titleLarge,
-                    color =
-                        if (digitEnabled) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
-                        },
                 )
             }
-            PinKeyButton(
-                enabled = confirmEnabled,
-                contentDescription = stringResource(R.string.pin_confirm_description),
-                onClick = { onEvent(PinPadEvent.Confirm) },
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null,
-                    tint =
-                        if (confirmEnabled) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
-                        },
-                )
+            if (uiState.isVerify) {
+                Box(modifier = Modifier.size(PIN_KEY_SIZE))
+            } else {
+                PinKeyButton(
+                    enabled = confirmEnabled,
+                    contentDescription = stringResource(R.string.pin_confirm_description),
+                    onClick = { onEvent(PinPadEvent.Confirm) },
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        tint =
+                            if (confirmEnabled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
+                            },
+                    )
+                }
             }
         }
     }
@@ -416,23 +417,35 @@ private fun PinKeyButton(
     contentDescription: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    backgroundColor: Color = Color.Transparent,
+    hasBackground: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    Box(
-        modifier =
-            modifier
-                .size(PIN_KEY_SIZE)
-                .clip(CircleShape)
-                .background(backgroundColor)
-                .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-                .semantics {
-                    role = Role.Button
-                    this.contentDescription = contentDescription
-                },
-        contentAlignment = Alignment.Center,
+    val bgAlpha = if (enabled) DIGIT_BG_ALPHA_ENABLED else DIGIT_BG_ALPHA_DISABLED
+    val bgColor =
+        if (hasBackground) {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = bgAlpha)
+        } else {
+            Color.Transparent
+        }
+    val contentAlpha = if (enabled) 1f else DISABLED_ALPHA
+    CompositionLocalProvider(
+        LocalContentColor provides MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
     ) {
-        content()
+        Box(
+            modifier =
+                modifier
+                    .size(PIN_KEY_SIZE)
+                    .clip(CircleShape)
+                    .background(bgColor)
+                    .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+                    .semantics {
+                        role = Role.Button
+                        this.contentDescription = contentDescription
+                    },
+            contentAlignment = Alignment.Center,
+        ) {
+            content()
+        }
     }
 }
 
@@ -449,10 +462,10 @@ private val samplePreviewProfile =
         sortOrder = 0,
     )
 
-@Preview(name = "PinPad - 0 Digits Light", showBackground = true)
-@Preview(name = "PinPad - 0 Digits Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "PinPad - Verify 0 Digits Light", showBackground = true)
+@Preview(name = "PinPad - Verify 0 Digits Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Composable
-internal fun PinPad0DigitsPreview() {
+internal fun PinPadVerify0DigitsPreview() {
     NexusTheme {
         PinPadContent(
             uiState =
@@ -461,16 +474,17 @@ internal fun PinPad0DigitsPreview() {
                     profile = samplePreviewProfile,
                     profileName = "Asha",
                     dotCount = 0,
+                    isVerify = true,
                 ),
             onEvent = {},
         )
     }
 }
 
-@Preview(name = "PinPad - 4 Digits Light", showBackground = true)
-@Preview(name = "PinPad - 4 Digits Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "PinPad - Verify 2 Digits Light", showBackground = true)
+@Preview(name = "PinPad - Verify 2 Digits Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Composable
-internal fun PinPad4DigitsPreview() {
+internal fun PinPadVerify2DigitsPreview() {
     NexusTheme {
         PinPadContent(
             uiState =
@@ -478,59 +492,62 @@ internal fun PinPad4DigitsPreview() {
                     titleKind = PinTitleKind.EnterPin,
                     profile = samplePreviewProfile,
                     profileName = "Asha",
-                    dotCount = 4,
+                    dotCount = 2,
+                    isVerify = true,
                 ),
             onEvent = {},
         )
     }
 }
 
-@Preview(name = "PinPad - 5 Digits Light", showBackground = true)
-@Preview(name = "PinPad - 5 Digits Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Preview(name = "PinPad - Create First Light", showBackground = true)
+@Preview(name = "PinPad - Create First Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Composable
-internal fun PinPad5DigitsPreview() {
-    NexusTheme {
-        PinPadContent(
-            uiState =
-                PinPadUiState(
-                    titleKind = PinTitleKind.EnterPin,
-                    profile = samplePreviewProfile,
-                    profileName = "Asha",
-                    dotCount = 5,
-                ),
-            onEvent = {},
-        )
-    }
-}
-
-@Preview(name = "PinPad - 6 Digits Light", showBackground = true)
-@Preview(name = "PinPad - 6 Digits Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
-@Composable
-internal fun PinPad6DigitsPreview() {
-    NexusTheme {
-        PinPadContent(
-            uiState =
-                PinPadUiState(
-                    titleKind = PinTitleKind.EnterPin,
-                    profile = samplePreviewProfile,
-                    profileName = "Asha",
-                    dotCount = 6,
-                ),
-            onEvent = {},
-        )
-    }
-}
-
-@Preview(name = "PinPad - Create Light", showBackground = true)
-@Preview(name = "PinPad - Create Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
-@Composable
-internal fun PinPadCreatePreview() {
+internal fun PinPadCreateFirstPreview() {
     NexusTheme {
         PinPadContent(
             uiState =
                 PinPadUiState(
                     titleKind = PinTitleKind.CreatePin,
-                    dotCount = PREVIEW_CREATE_DOT_COUNT,
+                    dotCount = 0,
+                    isVerify = false,
+                ),
+            onEvent = {},
+        )
+    }
+}
+
+@Preview(name = "PinPad - Create Confirm Light", showBackground = true)
+@Preview(name = "PinPad - Create Confirm Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+internal fun PinPadCreateConfirmPreview() {
+    NexusTheme {
+        PinPadContent(
+            uiState =
+                PinPadUiState(
+                    titleKind = PinTitleKind.ConfirmPin,
+                    dotCount = PREVIEW_CONFIRM_DOT_COUNT,
+                    isVerify = false,
+                ),
+            onEvent = {},
+        )
+    }
+}
+
+@Preview(name = "PinPad - Opening Light", showBackground = true)
+@Preview(name = "PinPad - Opening Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
+@Composable
+internal fun PinPadOpeningPreview() {
+    NexusTheme {
+        PinPadContent(
+            uiState =
+                PinPadUiState(
+                    titleKind = PinTitleKind.EnterPin,
+                    profile = samplePreviewProfile,
+                    profileName = "Asha",
+                    dotCount = 0,
+                    isVerify = true,
+                    holding = true,
                 ),
             onEvent = {},
         )

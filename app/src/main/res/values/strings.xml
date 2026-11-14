@@ -1021,7 +1021,7 @@
     <string name="pin_enter_title">Enter your PIN</string>
     <string name="pin_create_title">Create a PIN</string>
     <string name="pin_confirm_title">Confirm your PIN</string>
-    <string name="pin_choose_length_hint">Choose 4 to 6 digits</string>
+    <string name="pin_choose_length_hint">Choose 4 digits</string>
     <plurals name="pin_wrong_tries_left">
         <item quantity="one">Wrong PIN. 1 try left.</item>
         <item quantity="other">Wrong PIN. %1$d tries left.</item>
@@ -1038,13 +1038,14 @@
     <string name="pin_change_failed">Couldn\'t change the PIN. Try again.</string>
     <string name="pin_backspace_description">Delete last digit</string>
     <string name="pin_confirm_description">Confirm PIN</string>
-    <string name="pin_dots_description">%1$d of 6 digits</string>
+    <string name="pin_dots_description">%1$d of 4 digits</string>
     <string name="pin_cancel_description">Cancel</string>
 
     <plurals name="pin_digits_entered">
-        <item quantity="one">%d digit entered</item>
-        <item quantity="other">%d digits entered</item>
+        <item quantity="one">%d of 4 digits entered</item>
+        <item quantity="other">%d of 4 digits entered</item>
     </plurals>
+    <string name="pin_opening">Opening…</string>
     <string name="pin_offer_title">Protect this profile with a PIN?</string>
     <string name="pin_offer_message">A PIN keeps other people on this phone out of this profile.</string>
     <string name="pin_offer_skip">Skip</string>

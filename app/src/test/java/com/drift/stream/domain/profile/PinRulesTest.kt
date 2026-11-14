@@ -11,8 +11,8 @@ class PinRulesTest {
     }
 
     @Test
-    fun PN2_validPin_sixDigits() {
-        assertTrue(isValidPin("123456"))
+    fun PN2_invalidPin_sixDigits() {
+        assertFalse(isValidPin("123456"))
     }
 
     @Test
@@ -39,5 +39,10 @@ class PinRulesTest {
     @Test
     fun PN7_invalidPin_empty() {
         assertFalse(isValidPin(""))
+    }
+
+    @Test
+    fun PN8_invalidPin_fiveDigits() {
+        assertFalse(isValidPin("12345"))
     }
 }

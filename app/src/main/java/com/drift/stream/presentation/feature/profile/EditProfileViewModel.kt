@@ -56,6 +56,7 @@ data class EditProfileUiState(
     val activeProfile: Profile? = null,
     val host: DeleteHost = DeleteHost.Picker,
     val canExport: Boolean = false,
+    val canImport: Boolean = false,
     val cropBitmap: Bitmap? = null,
     val pinLockEnabled: Boolean = false,
     val pinActionError: Boolean = false,
@@ -232,12 +233,14 @@ class EditProfileViewModel
                 }
                 val canDelete = canDeleteProfile(profile, activeId, host)
                 val canExport = host == DeleteHost.Settings
+                val canImport = host == DeleteHost.Settings
                 _uiState.value =
                     _uiState.value.copy(
                         profile = profile,
                         formState = defaultStateForEdit(profile),
                         canDelete = canDelete,
                         canExport = canExport,
+                        canImport = canImport,
                         activeProfileId = activeId,
                         activeProfile = activeProfile,
                         host = host,

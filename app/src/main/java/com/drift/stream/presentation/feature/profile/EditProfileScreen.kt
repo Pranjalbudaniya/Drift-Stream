@@ -73,6 +73,7 @@ fun EditProfileScreen(
     modifier: Modifier = Modifier,
     host: DeleteHost = DeleteHost.Picker,
     onExportClick: (Long) -> Unit = {},
+    onImportClick: (Long) -> Unit = {},
     viewModel: EditProfileViewModel = hiltViewModel(key = "edit-$profileId"),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -120,6 +121,7 @@ fun EditProfileScreen(
             onEditEvent = viewModel::onEvent,
             onBack = onBack,
             onExportClick = onExportClick,
+            onImportClick = onImportClick,
             onPickPhoto = {
                 photoPickerLauncher.launch(
                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
@@ -178,6 +180,7 @@ fun EditProfileContent(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onExportClick: (Long) -> Unit = {},
+    onImportClick: (Long) -> Unit = {},
     onPickPhoto: (() -> Unit)? = null,
     onPickEmoji: (() -> Unit)? = null,
 ) {
@@ -269,6 +272,36 @@ fun EditProfileContent(
                         ) {
                             Text(
                                 text = stringResource(R.string.export_this_profile_data),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+
+                if (state.canImport) {
+                    Spacer(modifier = Modifier.height(NexusTheme.spacing.md))
+
+                    NexusCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .defaultMinSize(minHeight = EXPORT_ROW_MIN_HEIGHT)
+                                    .clickable(
+                                        role = Role.Button,
+                                        onClick = { state.profile?.id?.let(onImportClick) },
+                                    ).padding(horizontal = NexusTheme.spacing.md, vertical = NexusTheme.spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.edit_profile_import_data_row),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )

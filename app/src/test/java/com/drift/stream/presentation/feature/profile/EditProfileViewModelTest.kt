@@ -705,4 +705,21 @@ class EditProfileViewModelTest : EditProfileTestFixture() {
             testScheduler.advanceUntilIdle()
             assertFalse(pickerVm.uiState.value.canExport)
         }
+
+    @Test
+    fun EV28_importRow_shownOnlyInSettingsHost() =
+        testScope.runTest {
+            val profile = sampleProfile(1L, "Alice")
+            profilesFlow.value = listOf(profile)
+            activeProfileIdFlow.value = 1L
+            coEvery { profileRepository.get(1L) } returns profile
+
+            val settingsVm = createViewModel(1L, host = DeleteHost.Settings)
+            testScheduler.advanceUntilIdle()
+            assertTrue(settingsVm.uiState.value.canImport)
+
+            val pickerVm = createViewModel(1L, host = DeleteHost.Picker)
+            testScheduler.advanceUntilIdle()
+            assertFalse(pickerVm.uiState.value.canImport)
+        }
 }

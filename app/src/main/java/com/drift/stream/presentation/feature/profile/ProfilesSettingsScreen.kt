@@ -56,6 +56,7 @@ fun ProfilesSettingsScreen(
     onAddProfileClick: () -> Unit,
     modifier: Modifier = Modifier,
     onExportAllClick: () -> Unit = {},
+    onImportProfilesClick: () -> Unit = {},
     viewModel: ProfilesSettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -66,6 +67,7 @@ fun ProfilesSettingsScreen(
         onProfileClick = onProfileClick,
         onAddProfileClick = onAddProfileClick,
         onExportAllClick = onExportAllClick,
+        onImportProfilesClick = onImportProfilesClick,
         modifier = modifier,
     )
 }
@@ -79,6 +81,7 @@ fun ProfilesSettingsContent(
     onAddProfileClick: () -> Unit,
     modifier: Modifier = Modifier,
     onExportAllClick: () -> Unit = {},
+    onImportProfilesClick: () -> Unit = {},
     onEvent: (ProfilesSettingsEvent) -> Unit = {},
 ) {
     val spacing = NexusTheme.spacing
@@ -141,6 +144,34 @@ fun ProfilesSettingsContent(
                         ) {
                             Text(
                                 text = stringResource(R.string.export_all_profiles),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+
+                item(key = "import_profiles") {
+                    NexusCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .defaultMinSize(minHeight = ROW_MIN_HEIGHT)
+                                    .clickable(
+                                        role = Role.Button,
+                                        onClick = onImportProfilesClick,
+                                    ).padding(horizontal = spacing.md, vertical = spacing.sm),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.profiles_import_profiles_row),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )

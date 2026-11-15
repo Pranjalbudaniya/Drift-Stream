@@ -50,3 +50,11 @@ data class ExportProfile(
 
 @Serializable
 data object ExportAll
+
+@Serializable
+data object ImportProfiles
+
+@Serializable
+data class ImportInto(
+    val profileId: Long,
+)

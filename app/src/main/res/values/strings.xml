@@ -1102,5 +1102,60 @@
         <item quantity="one">%d add-on</item>
         <item quantity="other">%d add-ons</item>
     </plurals>
+
+    <!-- Import user data -->
+    <string name="profiles_import_profiles_row">Import profiles from a file</string>
+    <string name="edit_profile_import_data_row">Import data into this profile</string>
+    <string name="import_title">Import data</string>
+    <string name="import_title_add_as_new">Import profiles</string>
+    <string name="import_title_into">Import into %s</string>
+    <string name="import_choose_subtitle">Choose a backup file made by Drift Stream.</string>
+    <string name="import_choose_file_button">Choose file</string>
+    <string name="import_choose_another_file">Choose another file</string>
+    <string name="import_button">Import</string>
+    <string name="import_done_button">Done</string>
+    <string name="import_try_again_button">Try again</string>
+    <string name="import_parsing">Checking file…</string>
+    <string name="import_importing">Importing…</string>
+    <string name="import_preview_header">Backup from %1$s · app %2$s</string>
+    <string name="import_mode_merge">Merge into %s</string>
+    <string name="import_mode_replace">Replace %s\'s data</string>
+    <string name="import_addons_checkbox">Add-ons (%d)</string>
+    <string name="import_replace_dialog_title">Replace %s\'s data?</string>
+    <string name="import_replace_dialog_body">Their library, watch history, settings and add-ons from the file will replace what is there now. This can\'t be undone. Export first if you want a copy.</string>
+    <string name="import_replace_dialog_confirm">Replace</string>
+    <string name="import_replace_dialog_cancel">Cancel</string>
+    <string name="import_rejected_not_a_backup">This isn\'t a Drift Stream backup.</string>
+    <string name="import_rejected_too_large">The file is too large.</string>
+    <string name="import_rejected_newer_version">This backup is from a newer version of the app. Update the app to import it.</string>
+    <string name="import_rejected_corrupt">The file is damaged or incomplete.</string>
+    <string name="import_rejected_no_profiles">The backup has no profiles.</string>
+    <string name="import_rejected_too_many_items">The file has too many items.</string>
+    <string name="import_error_message">Couldn\'t import. Nothing was changed.</string>
+    <string name="import_warning_photo">The photo couldn\'t be saved.</string>
+    <string name="import_warning_settings">Some settings couldn\'t be saved.</string>
+    <string name="import_summary_skipped">%d skipped.</string>
+    <string name="import_summary_prefix">Imported: %s</string>
+
+    <plurals name="import_summary_profiles">
+        <item quantity="one">%d profile</item>
+        <item quantity="other">%d profiles</item>
+    </plurals>
+    <plurals name="import_summary_library">
+        <item quantity="one">%d library item</item>
+        <item quantity="other">%d library items</item>
+    </plurals>
+    <plurals name="import_summary_history">
+        <item quantity="one">%d history entry</item>
+        <item quantity="other">%d history entries</item>
+    </plurals>
+    <plurals name="import_summary_searches">
+        <item quantity="one">%d search</item>
+        <item quantity="other">%d searches</item>
+    </plurals>
+    <plurals name="import_summary_addons">
+        <item quantity="one">%d add-on</item>
+        <item quantity="other">%d add-ons</item>
+    </plurals>
 </resources>
 

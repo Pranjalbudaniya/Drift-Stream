@@ -1,8 +1,9 @@
 package com.drift.stream.data.backup
 
-import android.content.ContentResolver
+import android.content.Context
 import android.net.Uri
 import com.drift.stream.di.IoDispatcher
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -34,13 +35,15 @@ sealed interface FileReadResult {
 private const val BUFFER_SIZE = 8192
 
 @Singleton
-class BackupFileReader
+open class BackupFileReader
     @Inject
     constructor(
-        private val contentResolver: ContentResolver,
+        @ApplicationContext private val context: Context,
         @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     ) {
-        suspend fun read(
+        private val contentResolver get() = context.contentResolver
+
+        open suspend fun read(
             uri: Uri,
             maxBytes: Long,
         ): FileReadResult =

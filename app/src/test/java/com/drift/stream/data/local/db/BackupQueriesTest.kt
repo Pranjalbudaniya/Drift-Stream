@@ -138,7 +138,7 @@ class BackupQueriesTest {
             searchHistoryDao.upsert(p1Search2)
             searchHistoryDao.upsert(p2Search)
 
-            val p1Results = searchHistoryDao.getAllForProfile(1L)
+            val p1Results = searchHistoryDao.getAll(1L)
             assertEquals(2, p1Results.size)
             assertEquals(listOf("alien", "dune"), p1Results.map { it.query })
             assertFalse(p1Results.any { it.profileId == 2L })

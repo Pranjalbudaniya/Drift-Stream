@@ -303,5 +303,25 @@ class PlayerPrefsRepositoryImpl
                     KEY_SUBTITLE_EDGE,
                     KEY_SUBTITLE_BOLD,
                 )
+
+            val PERSONAL_KEY_TYPES: Map<String, String> =
+                mapOf(
+                    KEY_QUICK_PLAY.name to "boolean",
+                    KEY_AUTO_PLAY_NEXT.name to "boolean",
+                    KEY_PIP_ON_HOME.name to "boolean",
+                    KEY_STREAM_SORT.name to "string",
+                    KEY_PREFERRED_LANGUAGE.name to "string",
+                    KEY_PREFERRED_QUALITY.name to "int",
+                    KEY_HIDE_CAM.name to "boolean",
+                    KEY_SEEK_STEP_SECONDS.name to "int",
+                    KEY_VIDEO_SCALE.name to "string",
+                    KEY_PREFERRED_AUDIO_LANGUAGE.name to "string",
+                    KEY_PREFERRED_SUBTITLE_LANGUAGE.name to "string",
+                    KEY_SUBTITLE_SIZE.name to "string",
+                    KEY_SUBTITLE_COLOR.name to "string",
+                    KEY_SUBTITLE_BACKGROUND.name to "string",
+                    KEY_SUBTITLE_EDGE.name to "string",
+                    KEY_SUBTITLE_BOLD.name to "boolean",
+                )
         }
     }

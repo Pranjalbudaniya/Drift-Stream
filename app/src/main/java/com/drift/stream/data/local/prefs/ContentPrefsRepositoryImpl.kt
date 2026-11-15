@@ -47,5 +47,10 @@ class ContentPrefsRepositoryImpl
                 listOf(
                     KEY_FAMILY_MODE,
                 )
+
+            val PERSONAL_KEY_TYPES: Map<String, String> =
+                mapOf(
+                    KEY_FAMILY_MODE.name to "boolean",
+                )
         }
     }

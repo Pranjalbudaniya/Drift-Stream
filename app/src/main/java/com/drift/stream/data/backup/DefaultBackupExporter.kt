@@ -204,7 +204,7 @@ class DefaultBackupExporter
             enabled: Boolean,
         ): List<BackupSearchItem>? =
             if (enabled) {
-                daos.searchHistory.getAllForProfile(profileId).map { entity ->
+                daos.searchHistory.getAll(profileId).map { entity ->
                     BackupSearchItem(query = entity.query, lastUsedAt = entity.lastUsedAt)
                 }
             } else {

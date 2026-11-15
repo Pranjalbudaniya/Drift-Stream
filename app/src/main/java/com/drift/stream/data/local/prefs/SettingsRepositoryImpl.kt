@@ -136,6 +136,21 @@ class SettingsRepositoryImpl
                     KEY_CONTRAST,
                 )
 
+            val PERSONAL_KEY_TYPES: Map<String, String> =
+                mapOf(
+                    KEY_THEME_MODE.name to "string",
+                    KEY_DYNAMIC_COLOR.name to "boolean",
+                    KEY_AMOLED.name to "boolean",
+                    KEY_ACCENT_COLOR.name to "long",
+                    KEY_RECENT_ACCENTS.name to "string",
+                    KEY_FONT.name to "string",
+                    KEY_UI_SIZE.name to "string",
+                    KEY_TEXT_SIZE.name to "string",
+                    KEY_ROUNDNESS.name to "string",
+                    KEY_CARD_STYLE.name to "string",
+                    KEY_CONTRAST.name to "string",
+                )
+
             inline fun <reified E : Enum<E>> Preferences.readEnum(
                 key: Preferences.Key<String>,
                 default: E,

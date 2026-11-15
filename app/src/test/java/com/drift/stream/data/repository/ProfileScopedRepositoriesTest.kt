@@ -62,7 +62,9 @@ class ProfileScopedRepositoriesTest {
         override suspend fun getAll(profileId: Long): List<SearchHistoryEntity> =
             entries.value.filter { it.profileId == profileId }
 
-        override suspend fun getAllForProfile(profileId: Long): List<SearchHistoryEntity> = getAll(profileId)
+        override suspend fun upsertAll(entities: List<SearchHistoryEntity>) {
+            entities.forEach { upsert(it) }
+        }
 
         override suspend fun upsert(entity: SearchHistoryEntity) {
             entries.update { list ->

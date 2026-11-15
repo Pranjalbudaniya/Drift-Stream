@@ -41,6 +41,10 @@ class FakeLibraryDao : LibraryDao {
         items.value = current
     }
 
+    override suspend fun upsertAll(entities: List<LibraryItemEntity>) {
+        entities.forEach { upsert(it) }
+    }
+
     override suspend fun deleteAllForProfile(profileId: Long) {
         val current = items.value.toMutableMap()
         current.entries.removeIf { it.value.profileId == profileId }

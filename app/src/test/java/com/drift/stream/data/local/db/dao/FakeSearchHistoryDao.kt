@@ -15,13 +15,15 @@ class FakeSearchHistoryDao : SearchHistoryDao {
     override suspend fun getAll(profileId: Long): List<SearchHistoryEntity> =
         entries.value.filter { it.profileId == profileId }
 
-    override suspend fun getAllForProfile(profileId: Long): List<SearchHistoryEntity> = getAll(profileId)
-
     override suspend fun upsert(entity: SearchHistoryEntity) {
         entries.update { list ->
             (list.filterNot { it.profileId == entity.profileId && it.query == entity.query } + entity)
                 .sortedByDescending { it.lastUsedAt }
         }
+    }
+
+    override suspend fun upsertAll(entities: List<SearchHistoryEntity>) {
+        entities.forEach { upsert(it) }
     }
 
     override suspend fun delete(

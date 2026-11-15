@@ -27,6 +27,8 @@ class HistoryRepositoryImplTest {
                 key: String,
             ): WatchProgressEntity? = error("unused")
 
+            override suspend fun getAllForProfile(profileId: Long): List<WatchProgressEntity> = error("unused")
+
             override suspend fun upsert(entity: WatchProgressEntity) = error("unused")
 
             override suspend fun upsertAll(entities: List<WatchProgressEntity>) = error("unused")

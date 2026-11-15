@@ -37,8 +37,8 @@ internal data class DbOutcome(
     val searches: Int = 0,
     val addons: Int = 0,
     val createdPhotos: List<Pair<Long, ByteArray?>> = emptyList(),
-    val settingsToWrite: List<Pair<Long, Map<String, Map<String, Any>>>> = emptyList(),
-    val storesToClear: List<Pair<Long, Set<String>>> = emptyList(),
+    val settingsToAdd: List<Pair<Long, Map<String, Map<String, Any>>>> = emptyList(),
+    val settingsToReplace: List<Pair<Long, Map<String, Map<String, Any>>>> = emptyList(),
 )
 
 internal class TargetNotFoundException : Exception()
@@ -156,7 +156,7 @@ class DefaultBackupImporter
                 searches = searchesTotal,
                 addons = addonsTotal,
                 createdPhotos = photos,
-                settingsToWrite = settings,
+                settingsToAdd = settings,
             )
         }
 
@@ -235,8 +235,7 @@ class DefaultBackupImporter
                 progressEntries = p.progress.size,
                 searches = searchCount,
                 addons = addonsCount,
-                settingsToWrite = listOf(targetId to p.settings),
-                storesToClear = listOf(targetId to p.settings.keys),
+                settingsToReplace = listOf(targetId to p.settings),
             )
         }
 

@@ -36,6 +36,33 @@ object BackupPrefs {
             PlayerPrefsRepositoryImpl.PERSONAL_KEY_TYPES +
             ContentPrefsRepositoryImpl.PERSONAL_KEY_TYPES
 
+    fun ownsKey(
+        store: PersonalStore,
+        keyName: String,
+    ): Boolean = ownsKey(store.legacyFileName, keyName)
+
+    fun ownsKey(
+        storeName: String,
+        keyName: String,
+    ): Boolean =
+        when {
+            storeName.equals(PersonalStore.SETTINGS.legacyFileName, ignoreCase = true) -> {
+                keyName in PERSONAL_SETTINGS_ALLOW_LIST
+            }
+
+            storeName.equals(PersonalStore.SOURCE_MEMORY.legacyFileName, ignoreCase = true) -> {
+                keyName.startsWith("src.")
+            }
+
+            storeName.equals(PersonalStore.HOME_ROWS.legacyFileName, ignoreCase = true) -> {
+                keyName == "home_row_config"
+            }
+
+            else -> {
+                false
+            }
+        }
+
     fun exportEntries(
         store: PersonalStore,
         prefs: Preferences,
@@ -49,7 +76,7 @@ object BackupPrefs {
         return prefs
             .asMap()
             .entries
-            .filter { (key, _) -> !isSettings || key.name in PERSONAL_SETTINGS_ALLOW_LIST }
+            .filter { (key, _) -> !isSettings || ownsKey(PersonalStore.SETTINGS, key.name) }
             .mapNotNull { (key, value) -> encodeEntry(key.name, value) }
             .sortedBy { it.key }
     }
@@ -64,81 +91,33 @@ object BackupPrefs {
         storeName: String,
         entries: List<BackupPrefEntry>,
         keyTypes: Map<String, String> = PERSONAL_KEY_TYPES,
-    ): TypedValuesResult =
-        when {
-            storeName.equals(PersonalStore.SOURCE_MEMORY.legacyFileName, ignoreCase = true) -> {
-                parseSourceMemoryEntries(entries)
-            }
+    ): TypedValuesResult {
+        val values = mutableMapOf<String, Any>()
+        var skipped = 0
+        val isSourceMemory = storeName.equals(PersonalStore.SOURCE_MEMORY.legacyFileName, ignoreCase = true)
+        val isHomeRows = storeName.equals(PersonalStore.HOME_ROWS.legacyFileName, ignoreCase = true)
 
-            storeName.equals(PersonalStore.HOME_ROWS.legacyFileName, ignoreCase = true) -> {
-                parseHomeRowsEntries(entries)
-            }
-
-            else -> {
-                parseTypedEntries(entries, keyTypes)
-            }
-        }
-}
-
-private fun parseSourceMemoryEntries(entries: List<BackupPrefEntry>): TypedValuesResult {
-    val values = mutableMapOf<String, Any>()
-    var skipped = 0
-    for (entry in entries) {
-        val accepted =
-            if (entry.key.startsWith("src.") && entry.type == "string") {
-                parseAndValidateValue("string", entry.value)
+        for (entry in entries) {
+            val expectedTag =
+                when {
+                    isSourceMemory -> if (ownsKey(PersonalStore.SOURCE_MEMORY, entry.key)) "string" else null
+                    isHomeRows -> if (ownsKey(PersonalStore.HOME_ROWS, entry.key)) "string" else null
+                    else -> keyTypes[entry.key]
+                }
+            val accepted =
+                if (expectedTag != null && entry.type == expectedTag) {
+                    parseAndValidateValue(expectedTag, entry.value)
+                } else {
+                    null
+                }
+            if (accepted != null) {
+                values[entry.key] = accepted
             } else {
-                null
+                skipped++
             }
-        if (accepted != null) {
-            values[entry.key] = accepted
-        } else {
-            skipped++
         }
+        return TypedValuesResult(values, skipped)
     }
-    return TypedValuesResult(values, skipped)
-}
-
-private fun parseHomeRowsEntries(entries: List<BackupPrefEntry>): TypedValuesResult {
-    val values = mutableMapOf<String, Any>()
-    var skipped = 0
-    for (entry in entries) {
-        val accepted =
-            if (entry.key == "home_row_config" && entry.type == "string") {
-                parseAndValidateValue("string", entry.value)
-            } else {
-                null
-            }
-        if (accepted != null) {
-            values[entry.key] = accepted
-        } else {
-            skipped++
-        }
-    }
-    return TypedValuesResult(values, skipped)
-}
-
-private fun parseTypedEntries(
-    entries: List<BackupPrefEntry>,
-    keyTypes: Map<String, String>,
-): TypedValuesResult {
-    val values = mutableMapOf<String, Any>()
-    var skipped = 0
-    for (entry in entries) {
-        val expectedTag = keyTypes[entry.key]
-        val accepted =
-            if (expectedTag != null && entry.type == expectedTag) {
-                parseAndValidateValue(expectedTag, entry.value)
-            } else {
-                null
-            }
-        if (accepted != null) {
-            values[entry.key] = accepted
-        } else {
-            skipped++
-        }
-    }
-    return TypedValuesResult(values, skipped)
 }
 
 private fun parseAndValidateValue(
@@ -159,20 +138,16 @@ private fun parseAndValidateValue(
 }
 
 private fun parseStringSet(element: JsonElement): Set<String>? {
-    val array = element as? JsonArray
-    return if (array != null && array.size <= MAX_SET_SIZE && isValidStringSet(array)) {
-        array.map { (it as JsonPrimitive).content }.toSet()
-    } else {
-        null
-    }
+    val array = element as? JsonArray ?: return null
+    val isValid =
+        array.size <= MAX_SET_SIZE &&
+            array.all { item ->
+                (item as? JsonPrimitive)?.let { p ->
+                    p.isString && p.content.length <= MAX_STRING_IN_SET_LENGTH
+                } == true
+            }
+    return if (isValid) array.map { (it as JsonPrimitive).content }.toSet() else null
 }
-
-private fun isValidStringSet(array: JsonArray): Boolean =
-    array.all { item ->
-        (item as? JsonPrimitive)?.let { p ->
-            p.isString && p.content.length <= MAX_STRING_IN_SET_LENGTH
-        } == true
-    }
 
 private fun encodeEntry(
     keyName: String,

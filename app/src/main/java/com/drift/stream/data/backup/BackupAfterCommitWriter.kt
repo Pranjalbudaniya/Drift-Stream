@@ -1,6 +1,8 @@
 package com.drift.stream.data.backup
 
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -10,6 +12,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.drift.stream.data.profile.AvatarPhotoStore
 import com.drift.stream.data.profile.PersonalStore
 import com.drift.stream.data.profile.ProfileDataStores
+import com.drift.stream.domain.backup.BackupPrefs
 import com.drift.stream.domain.backup.ImportWarning
 import com.drift.stream.domain.repository.ProfileRepository
 import java.io.IOException
@@ -29,8 +32,8 @@ class BackupAfterCommitWriter
         internal suspend fun performWrites(outcome: DbOutcome): List<ImportWarning> {
             val warnings = mutableListOf<ImportWarning>()
             writePhotos(outcome.createdPhotos, warnings)
-            clearStores(outcome.storesToClear, warnings)
-            writeSettings(outcome.settingsToWrite, warnings)
+            addSettings(outcome.settingsToAdd, warnings)
+            replaceSettings(outcome.settingsToReplace, warnings)
             return warnings
         }
 
@@ -53,15 +56,20 @@ class BackupAfterCommitWriter
             }
         }
 
-        private suspend fun clearStores(
-            clears: List<Pair<Long, Set<String>>>,
+        private suspend fun addSettings(
+            settings: List<Pair<Long, Map<String, Map<String, Any>>>>,
             warnings: MutableList<ImportWarning>,
         ) {
-            for ((profId, storeNames) in clears) {
-                for (storeName in storeNames) {
+            for ((profId, settingsMap) in settings) {
+                for ((storeName, values) in settingsMap) {
                     val pStore = toPersonalStore(storeName) ?: continue
                     try {
-                        profileDataStores.storeFor(pStore, profId).edit { it.clear() }
+                        profileDataStores.storeFor(pStore, profId).edit { prefs ->
+                            for ((k, v) in values) {
+                                if (!BackupPrefs.ownsKey(pStore, k)) continue
+                                putEntry(prefs, k, v)
+                            }
+                        }
                     } catch (_: IOException) {
                         addWarning(warnings, ImportWarning.SettingsNotFullySaved)
                     } catch (_: IllegalStateException) {
@@ -73,7 +81,7 @@ class BackupAfterCommitWriter
             }
         }
 
-        private suspend fun writeSettings(
+        private suspend fun replaceSettings(
             settings: List<Pair<Long, Map<String, Map<String, Any>>>>,
             warnings: MutableList<ImportWarning>,
         ) {
@@ -81,13 +89,64 @@ class BackupAfterCommitWriter
                 for ((storeName, values) in settingsMap) {
                     val pStore = toPersonalStore(storeName) ?: continue
                     try {
-                        writeStoreValues(pStore, profId, values)
+                        profileDataStores.storeFor(pStore, profId).edit { prefs ->
+                            val toRemove =
+                                prefs.asMap().keys.filter { key ->
+                                    BackupPrefs.ownsKey(pStore, key.name)
+                                }
+                            for (key in toRemove) {
+                                prefs.remove(key)
+                            }
+                            for ((k, v) in values) {
+                                if (!BackupPrefs.ownsKey(pStore, k)) continue
+                                putEntry(prefs, k, v)
+                            }
+                        }
                     } catch (_: IOException) {
                         addWarning(warnings, ImportWarning.SettingsNotFullySaved)
                     } catch (_: IllegalStateException) {
                         addWarning(warnings, ImportWarning.SettingsNotFullySaved)
                     } catch (_: IllegalArgumentException) {
                         addWarning(warnings, ImportWarning.SettingsNotFullySaved)
+                    }
+                }
+            }
+        }
+
+        private fun putEntry(
+            prefs: MutablePreferences,
+            key: String,
+            value: Any,
+        ) {
+            when (value) {
+                is Boolean -> {
+                    prefs[booleanPreferencesKey(key)] = value
+                }
+
+                is Int -> {
+                    prefs[intPreferencesKey(key)] = value
+                }
+
+                is Long -> {
+                    prefs[longPreferencesKey(key)] = value
+                }
+
+                is Float -> {
+                    prefs[floatPreferencesKey(key)] = value
+                }
+
+                is Double -> {
+                    prefs[doublePreferencesKey(key)] = value
+                }
+
+                is String -> {
+                    prefs[stringPreferencesKey(key)] = value
+                }
+
+                is Collection<*> -> {
+                    val set = value.filterIsInstance<String>().toSet()
+                    if (set.size == value.size) {
+                        prefs[stringSetPreferencesKey(key)] = set
                     }
                 }
             }
@@ -99,47 +158,6 @@ class BackupAfterCommitWriter
         ) {
             if (warning !in warnings) {
                 warnings.add(warning)
-            }
-        }
-
-        private suspend fun writeStoreValues(
-            store: PersonalStore,
-            profileId: Long,
-            values: Map<String, Any>,
-        ) {
-            profileDataStores.storeFor(store, profileId).edit { prefs ->
-                for ((k, v) in values) {
-                    when (v) {
-                        is Boolean -> {
-                            prefs[booleanPreferencesKey(k)] = v
-                        }
-
-                        is Int -> {
-                            prefs[intPreferencesKey(k)] = v
-                        }
-
-                        is Long -> {
-                            prefs[longPreferencesKey(k)] = v
-                        }
-
-                        is Float -> {
-                            prefs[floatPreferencesKey(k)] = v
-                        }
-
-                        is Double -> {
-                            prefs[floatPreferencesKey(k)] = v.toFloat()
-                        }
-
-                        is String -> {
-                            prefs[stringPreferencesKey(k)] = v
-                        }
-
-                        is Collection<*> -> {
-                            val set = v.filterIsInstance<String>().toSet()
-                            prefs[stringSetPreferencesKey(k)] = set
-                        }
-                    }
-                }
             }
         }
 

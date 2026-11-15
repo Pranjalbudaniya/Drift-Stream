@@ -640,7 +640,7 @@ class BackupImporterTest {
                     .first()
                     .id
             stores.storeFor(PersonalStore.SETTINGS, targetId).edit {
-                it[stringPreferencesKey("old_key")] = "old_val"
+                it[stringPreferencesKey("app_font")] = "old_val"
             }
             stores.storeFor(PersonalStore.SOURCE_MEMORY, targetId).edit {
                 it[stringPreferencesKey("src.1")] = "keep_me"
@@ -654,7 +654,7 @@ class BackupImporterTest {
             assertTrue(res is ImportResult.Done)
 
             val settingsPrefs = stores.storeFor(PersonalStore.SETTINGS, targetId).data.first()
-            assertNull(settingsPrefs[stringPreferencesKey("old_key")])
+            assertNull(settingsPrefs[stringPreferencesKey("app_font")])
             assertEquals("dark", settingsPrefs[stringPreferencesKey("theme_mode")])
 
             val srcPrefs = stores.storeFor(PersonalStore.SOURCE_MEMORY, targetId).data.first()

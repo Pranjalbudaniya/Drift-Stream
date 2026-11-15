@@ -58,6 +58,7 @@ data class ValidatedBackup(
     val appVersion: String,
     val createdAt: Long,
     val profiles: List<ValidatedProfile>,
+    val skipped: Int = 0,
 )
 
 data class ValidatedProfile(
@@ -198,6 +199,7 @@ object BackupParser {
                 appVersion = file.appVersion,
                 createdAt = file.createdAt,
                 profiles = validatedProfiles,
+                skipped = totalSkipped,
             )
 
         return ParseOutcome.Ready(

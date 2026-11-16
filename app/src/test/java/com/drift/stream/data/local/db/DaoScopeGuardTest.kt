@@ -6,17 +6,23 @@ import org.junit.Test
 import java.io.File
 
 class DaoScopeGuardTest {
-    private fun resolveDaoSource(fileName: String): String {
+    private fun resolveDaoDirectory(): File {
         val candidates =
             listOf(
-                File("src/main/java/com/drift/stream/data/local/db/dao/$fileName"),
-                File("app/src/main/java/com/drift/stream/data/local/db/dao/$fileName"),
-                File(System.getProperty("user.dir"), "src/main/java/com/drift/stream/data/local/db/dao/$fileName"),
-                File(System.getProperty("user.dir"), "app/src/main/java/com/drift/stream/data/local/db/dao/$fileName"),
+                File("src/main/java/com/drift/stream/data/local/db/dao"),
+                File("app/src/main/java/com/drift/stream/data/local/db/dao"),
+                File(System.getProperty("user.dir"), "src/main/java/com/drift/stream/data/local/db/dao"),
+                File(System.getProperty("user.dir"), "app/src/main/java/com/drift/stream/data/local/db/dao"),
             )
-        val file =
-            candidates.firstOrNull { it.exists() }
-                ?: error("Cannot find $fileName in: $candidates (user.dir=${System.getProperty("user.dir")})")
+        return candidates.firstOrNull { it.isDirectory }
+            ?: error("Cannot find dao directory in: $candidates (user.dir=${System.getProperty("user.dir")})")
+    }
+
+    private fun resolveDaoSource(fileName: String): String {
+        val file = File(resolveDaoDirectory(), fileName)
+        if (!file.exists()) {
+            error("Cannot find $fileName in ${resolveDaoDirectory().path}")
+        }
         return file.readText()
     }
 
@@ -123,5 +129,45 @@ class DaoScopeGuardTest {
 
         assertTrue("Expected scoped queries", scopedCount >= 4)
         assertEquals(engineAllowList.size, allowListCount)
+    }
+
+    @Test
+    fun DS4_everyDaoFile_isClassified() {
+        val profileScoped =
+            setOf(
+                "LibraryDao.kt",
+                "ProgressDao.kt",
+                "SearchHistoryDao.kt",
+                "AddonDao.kt",
+                "ProfileAddonPrefsDao.kt",
+                "DownloadDao.kt",
+            )
+        val global = setOf("MetaCacheDao.kt")
+        val profileTable = setOf("ProfileDao.kt", "ProfilePinQueries.kt")
+        val notADao = setOf("SharedAddonRow.kt")
+
+        val allCategories = listOf(profileScoped, global, profileTable, notADao)
+        val allClassified = mutableSetOf<String>()
+        for (set in allCategories) {
+            for (file in set) {
+                assertTrue("File '$file' must not appear in multiple sets", allClassified.add(file))
+            }
+        }
+
+        val daoDir = resolveDaoDirectory()
+        val actualFiles =
+            daoDir
+                .listFiles { _, name -> name.endsWith(".kt") }
+                ?.map { it.name }
+                ?.toSet()
+                .orEmpty()
+
+        assertTrue("Expected DAO files in directory", actualFiles.isNotEmpty())
+
+        val unclassified = actualFiles - allClassified
+        assertTrue("Found unclassified DAO files: $unclassified", unclassified.isEmpty())
+
+        val nonExistent = allClassified - actualFiles
+        assertTrue("Classified files do not exist in DAO directory: $nonExistent", nonExistent.isEmpty())
     }
 }

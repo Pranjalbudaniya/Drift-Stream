@@ -34,7 +34,7 @@ class ProfileDataStores(
         kind: PersonalStore,
         profileId: Long,
     ): DataStore<Preferences> =
-        if (kind == PersonalStore.SETTINGS && profileId == 1L) {
+        if (kind == PersonalStore.SETTINGS && profileId == LEGACY_OWNER_PROFILE_ID) {
             legacySettings
         } else {
             synchronized(lock) {
@@ -42,7 +42,7 @@ class ProfileDataStores(
                     .getOrPut(kind to profileId) {
                         val scope = newScope()
                         val fileName =
-                            if (profileId == 1L) {
+                            if (profileId == LEGACY_OWNER_PROFILE_ID) {
                                 kind.legacyFileName
                             } else {
                                 "${kind.legacyFileName}_p$profileId"
@@ -60,7 +60,7 @@ class ProfileDataStores(
         }
 
     fun delete(profileId: Long) {
-        if (profileId == 1L) return
+        if (profileId == LEGACY_OWNER_PROFILE_ID) return
         val toCancel = mutableListOf<CoroutineScope>()
         synchronized(lock) {
             for (kind in PersonalStore.entries) {
@@ -91,5 +91,9 @@ class ProfileDataStores(
                 tmp.delete()
             }
         }
+    }
+
+    companion object {
+        const val LEGACY_OWNER_PROFILE_ID: Long = 1L
     }
 }

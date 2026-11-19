@@ -214,6 +214,7 @@ class LibrarySyncTest {
             contentPrefsRepository = contentPrefsRepository,
             dispatcher = testDispatcher,
             homeRowConfigRepository = FakeHomeRowConfigRepository(),
+            activeProfileProvider = FakeActiveProfileProvider(1L),
         )
 
     private fun createDetailViewModel(): DetailViewModel =

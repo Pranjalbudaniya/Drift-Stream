@@ -14,6 +14,7 @@ import com.drift.stream.domain.model.MetaPreview
 import com.drift.stream.domain.model.Outcome
 import com.drift.stream.domain.model.PosterMark
 import com.drift.stream.domain.model.PosterShape
+import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.AddonRepository
 import com.drift.stream.domain.repository.ContentPrefsRepository
 import com.drift.stream.domain.repository.HomeRowConfigRepository
@@ -51,6 +52,7 @@ class HomeViewModelTest {
     private val progressRepository: ProgressRepository = mockk(relaxed = true)
     private val contentPrefsRepository: ContentPrefsRepository = mockk()
     private val homeRowConfigRepository: HomeRowConfigRepository = mockk()
+    private val activeProfileProvider: ActiveProfileProvider = mockk()
 
     private val allAddonsFlow = MutableStateFlow<List<Addon>>(emptyList())
     private val enabledAddonsFlow = MutableStateFlow<List<Addon>>(emptyList())
@@ -59,6 +61,7 @@ class HomeViewModelTest {
     private val watchedMovieIdsFlow = MutableStateFlow<Set<String>>(emptySet())
     private val continueWatchingFlow = MutableStateFlow<List<ContinueWatchingItem>>(emptyList())
     private val homeRowConfigFlow = MutableStateFlow(HomeRowConfig())
+    private val activeProfileIdFlow = MutableStateFlow<Long?>(1L)
 
     @Before
     fun setUp() {
@@ -71,6 +74,7 @@ class HomeViewModelTest {
         every { progressRepository.observeWatchedMovieIds() } returns watchedMovieIdsFlow
         every { progressRepository.observeContinueWatching() } returns continueWatchingFlow
         every { homeRowConfigRepository.config } returns homeRowConfigFlow
+        every { activeProfileProvider.activeProfileId } returns activeProfileIdFlow
         coEvery { libraryRepository.setStatus(any(), any()) } returns Unit
         coEvery { ensureDefaultAddons() } returns Outcome.Success(Unit)
     }
@@ -90,6 +94,7 @@ class HomeViewModelTest {
             contentPrefsRepository = contentPrefsRepository,
             dispatcher = testDispatcher,
             homeRowConfigRepository = homeRowConfigRepository,
+            activeProfileProvider = activeProfileProvider,
         )
 
     @Test

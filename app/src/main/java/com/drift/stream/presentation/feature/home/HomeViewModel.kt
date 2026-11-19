@@ -12,6 +12,7 @@ import com.drift.stream.domain.model.MetaPreview
 import com.drift.stream.domain.model.Outcome
 import com.drift.stream.domain.model.PosterMark
 import com.drift.stream.domain.model.RowState
+import com.drift.stream.domain.repository.ActiveProfileProvider
 import com.drift.stream.domain.repository.AddonRepository
 import com.drift.stream.domain.repository.ContentPrefsRepository
 import com.drift.stream.domain.repository.HomeRowConfigRepository
@@ -34,6 +35,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -120,6 +123,7 @@ class HomeViewModel
         private val contentPrefsRepository: ContentPrefsRepository,
         @DefaultDispatcher private val dispatcher: CoroutineDispatcher,
         private val homeRowConfigRepository: HomeRowConfigRepository,
+        private val activeProfileProvider: ActiveProfileProvider,
     ) : ViewModel() {
         private val buildHomeRows = BuildHomeRows()
         private val buildHero = BuildHero()
@@ -141,6 +145,7 @@ class HomeViewModel
 
         private val rowStates = mutableMapOf<String, HomeRow>()
         private val rowJobs = mutableMapOf<String, Job>()
+        private var seedJob: Job? = null
         private var rawCatalogSpecs: List<HomeRowSpec> = emptyList()
         private var currentSpecs: List<HomeRowSpec> = emptyList()
         private var hasAddons = false
@@ -152,7 +157,7 @@ class HomeViewModel
         private var watchedMovieIdsSet = emptySet<String>()
 
         init {
-            runSeed()
+            observeActiveProfile()
             observeState()
         }
 
@@ -197,6 +202,20 @@ class HomeViewModel
                 viewModelScope.launch { libraryRepository.setStatus(item, null) }
             } else {
                 _uiState.update { it.copy(confirmRemoveItem = item to currentStatus) }
+            }
+        }
+
+        private fun observeActiveProfile() {
+            viewModelScope.launch {
+                activeProfileProvider.activeProfileId
+                    .filterNotNull()
+                    .distinctUntilChanged()
+                    .collect {
+                        seedJob?.cancel()
+                        seedFailed = false
+                        recomputeUiState()
+                        seedJob = launchSeedJob()
+                    }
             }
         }
 
@@ -318,6 +337,13 @@ class HomeViewModel
         }
 
         private fun runSeed() {
+            seedJob?.cancel()
+            seedFailed = false
+            recomputeUiState()
+            seedJob = launchSeedJob()
+        }
+
+        private fun launchSeedJob(): Job =
             viewModelScope.launch {
                 when (ensureDefaultAddons()) {
                     is Outcome.Success -> {
@@ -331,7 +357,6 @@ class HomeViewModel
                     }
                 }
             }
-        }
 
         private fun recomputeUiState() {
             val orderedRows = currentSpecs.mapNotNull { rowStates[it.key] }
